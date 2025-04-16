@@ -50,7 +50,7 @@ class DealSourcingBot:
             # Browse the provided deck
             logger.info("Starting deck browsing...")
             try:
-                deck_data = await self.deck_browser.run_docsend_analysis(message.text)
+                deck_data = await self.deck_browser.process_input(message.text, message.attachments)
                 logger.info(f"Deck browsing complete. Data: {str(deck_data)[:100]}...")  # Log first 100 chars
             except Exception as e:
                 logger.error(f"Error in deck browsing: {str(e)}")

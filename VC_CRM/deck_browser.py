@@ -36,27 +36,27 @@ class DeckBrowser:
     #決定流程
     SourceType = Literal["docsend", "attachment", "gdrive", "unknown"]
     
-    def detect_source_type(message_text: str, attachments: Optional[list] = None) -> SourceType:
+    def detect_source_type(message: str, attachments: Optional[list] = None) -> SourceType:
         """偵測訊息來源型態（docsend / 附件 / gdrive）"""
-        if "docsend.com" in message_text.lower():
+        if "docsend.com" in message.lower():
             return "docsend"
         elif attachments and any(f.lower().endswith(('.pdf', '.pptx', '.ppt')) for f in attachments):
             return "attachment"
-        elif re.search(r"https://drive\.google\.com/\S+", message_text):
+        elif re.search(r"https://drive\.google\.com/\S+", message):
             return "gdrive"
         else:
             return "unknown"
     
     #決定指定分析項目    
-    async def process_input(message_text: str, attachments: Optional[list] = None):
-        source_type = detect_source_type(message_text, attachments)
+    async def process_input(self, message: str, attachments: Optional[list] = None):
+        source_type = self.detect_source_type(message, attachments)
         
         if source_type == "docsend":
-            return await run_docsend_analysis(message_text)
+            return await self.run_docsend_analysis(message)
         elif source_type == "attachment":
             return await run_file_analysis(attachments)
         elif source_type == "gdrive":
-            return await run_gdrive_analysis(message_text)
+            return await run_gdrive_analysis(message)
         else:
             raise ValueError("⚠️ 無法判斷輸入資料來源。請確認是否包含合法連結或附件。")
     
