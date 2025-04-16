@@ -4,7 +4,7 @@ import traceback
 import asyncio
 import nest_asyncio
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import Update, File
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from deal_analyzer import DealAnalyzer
 from sheets_manager import SheetsManager
@@ -44,13 +44,24 @@ class DealSourcingBot:
             chat_id = message.chat_id
             logger.info(f"Received message from user {chat_id}: {message.text[:100]}...")  # Log first 100 chars
             
+                # 處理附件
+            attachments = []
+            if message.document:
+                tg_file = await context.bot.get_file(message.document.file_id)
+                file_bytes = await tg_file.download_as_bytearray()
+                attachments.append({
+                    "name": message.document.file_name,
+                    "bytes": file_bytes,
+                    "mime_type": message.document.mime_type,
+                })
+            
             # Inform user that processing has started
             processing_msg = await message.reply_text("Processing your message...")
             
             # Browse the provided deck
             logger.info("Starting deck browsing...")
             try:
-                deck_data = await self.deck_browser.process_input(message.text, message.attachments)
+                deck_data = await self.deck_browser.process_input(message.text, attachments)
                 logger.info(f"Deck browsing complete. Data: {str(deck_data)[:100]}...")  # Log first 100 chars
             except Exception as e:
                 logger.error(f"Error in deck browsing: {str(e)}")
