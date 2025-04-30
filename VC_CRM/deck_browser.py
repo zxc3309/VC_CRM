@@ -1,4 +1,6 @@
 import os
+import sys
+from io import BytesIO  # 移到最上面
 import logging
 from dotenv import load_dotenv
 import re
@@ -10,22 +12,24 @@ import random
 from PIL import Image
 import pytesseract
 import requests
-from io import BytesIO
 from openai import AsyncOpenAI
 import json
 import fitz  # PyMuPDF for PDF
 import tempfile
 from pptx import Presentation
-from PIL import Image
 import sys
 
-# 1. First load environment variables
+# 2. 添加系統編碼設定
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+sys.stdout.reconfigure(encoding='utf-8')
+
+# 3. 載入環境變數
 load_dotenv()
 
-# 2. Configure logging
+# 4. 配置日誌
 logger = logging.getLogger(__name__)
 
-# 3. Configure Tesseract path
+# 5. 配置 Tesseract 路徑
 tesseract_path = os.getenv('TESSERACT_CMD')
 if tesseract_path:
     logger.info(f"Using Tesseract path from environment variable: {tesseract_path}")
@@ -39,10 +43,6 @@ else:
         pytesseract.pytesseract.tesseract_cmd = '/usr/local/bin/tesseract'
 
 logger.info(f"Final Tesseract path: {pytesseract.pytesseract.tesseract_cmd}")
-
-# 設定系統編碼
-os.environ['PYTHONIOENCODING'] = 'utf-8'
-sys.stdout.reconfigure(encoding='utf-8')
 
 class DeckBrowser:
     """DocSend 文檔讀取器"""
