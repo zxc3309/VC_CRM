@@ -73,7 +73,7 @@ class DeckBrowser:
     async def run_gdrive_analysis(self, message: str) -> Dict[str, Any]:
         self.logger.info(f"📥 開始處理 Google Drive 連結: {message}")
 
-        gdrive_match = re.search(r"https://drive\\.google\\.com/file/d/([\w-]+)", message)
+        gdrive_match = re.search(r"https://drive\.google\.com/file/d/([\w-]+)", message)
         if not gdrive_match:
             gdrive_match = re.search(r"id=([\w-]+)", message)
 
@@ -532,16 +532,16 @@ if __name__ == "__main__":
 
     async def main():
         message = """
-        Hesai, a Lidar manufacturer
-
-        Pitch Deck: https://drive.google.com/file/d/1zS4jnvTJK5C8OASbLt7rMbU1QcHiP-1Z/view?usp=sharing
+        Normie Tech lets your customers pay you in stablecoins without an onramp
+        Before this I managed a million dollar grant program for Vitalik and saw the number 1 issue repeatedly holding back web3: sending customers to exchanges where >3/4 give up. We built a solution for our own platform and other projects asked to hire us to do the same.
+        Profitable from set up fees by month 4, raising a pre-seed to move faster.
+        Here is the deck:
+        https://docsend.com/view/sikphsrjbwpz8h82
 
         """
         
         reader = DeckBrowser()
-        print("hi")
         await reader.initialize()
-        print("hi2")
         try:
             results = await reader.process_input(message)
             await reader.close()
