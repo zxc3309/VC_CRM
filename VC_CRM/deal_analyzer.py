@@ -184,18 +184,13 @@ class DealAnalyzer:
                     continue
                 
                 # 提取創始人名稱和職稱
-                founder_prompt = f"""根據以下搜索結果，識別 {company_name} 的創始人和他們的職稱。
+                founder_prompt = f"""根據以下搜索結果，識別 {company_name} 的創始人和他的職稱。
                 只返回以下 JSON 格式:
                 {{
                     "founders": [
                         {{
-                            "name": "創始人1",
-                            "title": "職稱1"
-                        }},
-                        {{
-                            "name": "創始人2",
-                            "title": "職稱2"
-                        }}
+                            "name": "創始人",
+                            "title": "職稱"
                         }}
                     ]
                 }}
