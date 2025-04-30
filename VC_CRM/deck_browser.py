@@ -13,6 +13,11 @@ import requests
 from io import BytesIO
 from openai import AsyncOpenAI
 import json
+import fitz  # PyMuPDF for PDF
+import tempfile
+from pptx import Presentation
+from PIL import Image
+import sys
 
 # Load environment variables
 load_dotenv()
@@ -36,7 +41,8 @@ class DeckBrowser:
     #決定流程
     SourceType = Literal["docsend", "attachment", "gdrive", "unknown"]
     
-    def detect_source_type(message: str, attachments: Optional[list] = None) -> SourceType:
+    @staticmethod
+    def detect_source_type(message: str, attachments: Optional[list] = None) -> "DeckBrowser.SourceType":
         if "docsend.com" in message.lower():
             return "docsend"
         elif attachments and any(
@@ -44,7 +50,7 @@ class DeckBrowser:
             for att in attachments if isinstance(att, dict)
         ):
             return "attachment"
-        elif re.search(r"https://drive\.google\.com/\S+", message):
+        elif re.search(r"https://(?:drive|docs)\.google\.com/(?:file/d/|presentation/)[\w\-/]+", message):
             return "gdrive"
         else:
             return "unknown"
@@ -53,14 +59,122 @@ class DeckBrowser:
         source_type = self.detect_source_type(message, attachments)
 
         if source_type == "docsend":
+            self.logger.info(f"開始處理 Docsend")
             return await self.run_docsend_analysis(message)
         elif source_type == "attachment":
+            self.logger.info(f"開始處理 Attachment")
             return await self.run_file_analysis(attachments)
         elif source_type == "gdrive":
+            self.logger.info(f"開始處理 Google Drive")
             return await self.run_gdrive_analysis(message)
         else:
             raise ValueError("⚠️ 無法判斷輸入資料來源。請確認是否包含合法連結或附件。")
-    
+
+    async def run_gdrive_analysis(self, message: str) -> Dict[str, Any]:
+        self.logger.info(f"📥 開始處理 Google Drive 連結: {message}")
+
+        gdrive_match = re.search(r"https://drive\\.google\\.com/file/d/([\w-]+)", message)
+        if not gdrive_match:
+            gdrive_match = re.search(r"id=([\w-]+)", message)
+
+        if not gdrive_match:
+            return {"error": "❌ 無法從訊息中擷取 Google Drive 檔案 ID。請確認連結格式。"}
+
+        file_id = gdrive_match.group(1)
+        export_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+
+        try:
+            response = requests.get(export_url)
+            response.raise_for_status()
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                tmp.write(response.content)
+                tmp_path = tmp.name
+
+            self.logger.info(f"📄 成功下載 PDF 檔案至 {tmp_path}，開始執行分析...")
+
+            return await self.run_file_analysis([{"path": tmp_path, "name": "gdrive.pdf"}])
+
+        except Exception as e:
+            self.logger.error(f"❌ 下載或處理 Google Drive 檔案時發生錯誤：{str(e)}")
+            return {"error": f"❌ Google Drive 檔案處理失敗：{str(e)}"}
+            
+    async def run_file_analysis(self, attachments: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+        """
+        處理 PDF/PPTX 附件：執行 OCR 或結構化摘要
+        """
+        results = []
+
+        for file in attachments:
+            path = file.get("path")
+            name = file.get("name", "unnamed")
+            suffix = os.path.splitext(name)[-1].lower()
+
+            self.logger.info(f"📂 開始分析附件: {name}")
+
+            extracted_text = ""
+
+            try:
+                # Check file size before processing
+                if not os.path.exists(path) or os.path.getsize(path) < 1024:
+                    self.logger.error(f"❌ 檔案 {name} ({path}) 太小或不存在，可能下載失敗。")
+                    results.append({"error": f"❌ 檔案 {name} 下載失敗或不是有效的檔案。"})
+                    continue
+
+                if suffix == ".pdf":
+                    doc = fitz.open(path)
+                    for page in doc:
+                        extracted_text += page.get_text("text") + "\n"
+                    doc.close()
+
+                elif suffix == ".pptx":
+                    try:
+                        prs = Presentation(path)
+                    except Exception as e:
+                        self.logger.error(f"❌ 無法開啟 PPTX 檔案 {name}: {type(e).__name__}: {e}")
+                        results.append({"error": f"❌ 無法開啟 PPTX 檔案 {name}: {type(e).__name__}: {e}"})
+                        continue
+                    for i, slide in enumerate(prs.slides):
+                        for shape in slide.shapes:
+                            if hasattr(shape, "text"):
+                                extracted_text += f"[Slide {i+1}]\n{shape.text}\n"
+
+                if not extracted_text.strip():
+                    self.logger.warning(f"⚠️ {name} 沒有擷取到文字，開始執行 OCR 圖片辨識")
+
+                    image_urls = []
+                    if suffix == ".pdf":
+                        doc = fitz.open(path)
+                        for page_num, page in enumerate(doc):
+                            pix = page.get_pixmap(dpi=200)
+                            img_path = f"{path}_page_{page_num}.png"
+                            pix.save(img_path)
+                            image_urls.append(f"file://{img_path}")
+                        doc.close()
+
+                    elif suffix == ".pptx":
+                        self.logger.warning("❌ 尚未實作 PPTX 頁面轉圖片的 OCR fallback")
+                        continue
+
+                    if image_urls:
+                        ocr_text = await ocr_images_from_urls(image_urls)
+                        if ocr_text:
+                            summary = await summarize_pitch_deck(ocr_text)
+                            if summary:
+                                results.append(summary)
+                                continue
+
+                else:
+                    summary = await summarize_pitch_deck(extracted_text)
+                    if summary:
+                        results.append(summary)
+
+            except Exception as e:
+                self.logger.error(f"❌ 分析檔案 {name} 發生錯誤：{e}")
+                results.append({"error": f"❌ 分析失敗: {name}"})
+
+        return results if results else [{"error": "❌ 沒有成功處理任何附件內容"}]
+
     #主要 Docsend 驅動式
     async def run_docsend_analysis(self, message: str) -> Dict[str, Any]:
         """
@@ -415,40 +529,31 @@ async def debug_all_iframes(page):
 
 #測試用驅動器
 if __name__ == "__main__":
-    import sys
 
     async def main():
         message = """
-        Global Sovereign Exchange (GSX): The First Compliant On/Off Ramp for India's Crypto Boom
+        Hesai, a Lidar manufacturer
 
-        Pitch Deck: https://docsend.com/view/dpr7kr5uayvxekst/d/wbyrdmea55xp2ryk
+        Pitch Deck: https://drive.google.com/file/d/1zS4jnvTJK5C8OASbLt7rMbU1QcHiP-1Z/view?usp=sharing
 
-        India’s crypto market has 500M+ of potential users, but no compliant on/off ramp. Exchanges rely on an unregulated P2P system riddled with chargebacks and frozen accounts.
-
-        GSX is fixing this. GSX is India’s first FIU-registered fiat-to-crypto on/off ramp, with a live digital wallet, cross-chain DEX aggregator, and 500+ active P2P merchants moving $500K+ daily.
-
-        Partnerships
-        -Top 3 global exchange (100M+ users) – Integrating GSX for fiat-to-crypto on-ramping in India.
-        -Circle – Expanding stablecoin adoption in India & high-inflation regions.
-        -Near Protocol – Partnering on India ecosystem growth.
-        -Major Indian financial group – Collaborating on crypto lending & insurance.
-
-        Team
-        CEO Alex Tai
-        - Former Senior Director at Virgin Group for 20 years
-        - One of four executives to report directly to Richard Branson
-        - He Co-Founded Virgin Galactic and led as COO
-        - A fighter jet pilot and holds 11 world records
-        - Founded a Blockchain consultancy that worked with BCG to bring blockchain to Fortune500 companies
-
-        Raising Now: $1.5M (SAFE + Token Warrant)
         """
         
         reader = DeckBrowser()
+        print("hi")
         await reader.initialize()
-        for url in await reader.extract_docsend_links(message):
-            content = await reader.read_docsend_document(url)
-        await reader.close()
-        print(content)
+        print("hi2")
+        try:
+            results = await reader.process_input(message)
+            await reader.close()
+
+            if results:
+                print(json.dumps(results[0], ensure_ascii=False, indent=2))
+            else:
+                print("⚠️ 沒有擷取到任何結果")
+
+        except Exception as e:
+            print(results)
+            print(f"❌ 發生錯誤: {e}")
+            await reader.close()
 
     asyncio.run(main())

@@ -12,3 +12,6 @@ aiohttp==3.8.5
 pyppeteer==1.0.2
 pytesseract==0.3.10
 Pillow==9.5.0
+PyMuPDF
+python-pptx
+google-auth-oauthlib
