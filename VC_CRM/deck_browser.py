@@ -19,15 +19,30 @@ from pptx import Presentation
 from PIL import Image
 import sys
 
-# Load environment variables
+# 1. First load environment variables
 load_dotenv()
 
-# Pytesseract Path
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-
-# 配置日誌
+# 2. Configure logging
 logger = logging.getLogger(__name__)
 
+# 3. Configure Tesseract path
+tesseract_path = os.getenv('TESSERACT_CMD')
+if tesseract_path:
+    logger.info(f"Using Tesseract path from environment variable: {tesseract_path}")
+    pytesseract.pytesseract.tesseract_cmd = tesseract_path
+else:
+    logger.warning("TESSERACT_CMD not set in environment variables. Using default path.")
+    # Fallback to default paths based on OS
+    if sys.platform.startswith('win'):
+        pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    elif sys.platform.startswith('darwin'):  # macOS
+        pytesseract.pytesseract.tesseract_cmd = '/usr/local/bin/tesseract'
+
+logger.info(f"Final Tesseract path: {pytesseract.pytesseract.tesseract_cmd}")
+
+# 設定系統編碼
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+sys.stdout.reconfigure(encoding='utf-8')
 
 class DeckBrowser:
     """DocSend 文檔讀取器"""
@@ -427,23 +442,38 @@ openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 async def ocr_images_from_urls(image_urls: List[str]) -> str:
     """下載圖片並執行 OCR"""
     from pytesseract import pytesseract
-
     results = []
 
     for i, url in enumerate(image_urls):
         try:
-            # 基本驗證 URL 格式
-            if not url.startswith("http"):
-                logger.warning(f"❌ 無效的圖片 URL: {url}")
+            # 處理 base64 圖片
+            if url.startswith('data:image/'):
+                try:
+                    import base64
+                    # 取得 base64 編碼部分
+                    header, encoded = url.split(",", 1)
+                    img_data = base64.b64decode(encoded)
+                    img = Image.open(BytesIO(img_data))
+                except Exception as e:
+                    logger.warning(f"❌ 無法解析 base64 圖片: {str(e)}")
+                    continue
+            # 處理一般 URL
+            elif url.startswith("http"):
+                response = requests.get(url)
+                img = Image.open(BytesIO(response.content))
+            else:
+                logger.warning(f"❌ 不支援的圖片 URL 格式: {url[:100]}...")
                 continue
 
-            response = requests.get(url)
-            img = Image.open(BytesIO(response.content))
-            text = pytesseract.image_to_string(img)
-            if text.strip():
-                results.append(f"[Slide {i+1}]\n{text.strip()}")
+            # 使用 UTF-8 編碼處理文字
+            text = pytesseract.image_to_string(img, lang='eng')
+            if text and text.strip():
+                # 確保文字使用 UTF-8 編碼
+                text_encoded = text.encode('utf-8', errors='ignore').decode('utf-8')
+                results.append(f"[Slide {i+1}]\n{text_encoded}")
+                
         except Exception as e:
-            logger.warning(f"❌ 讀取圖片 {url} 失敗: {e}")
+            logger.warning(f"❌ 讀取圖片失敗: {str(e)}", exc_info=True)
 
     return "\n\n".join(results)
 
