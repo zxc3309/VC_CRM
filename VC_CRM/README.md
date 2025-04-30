@@ -129,4 +129,73 @@ python main.py
 
 ## 授權
 
-[Your License] 
+[Your License]
+
+## 環境設定
+
+### 必要軟體安裝
+
+1. **Python 相依套件**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Tesseract OCR 安裝**
+   - **macOS**：
+     ```bash
+     brew install tesseract
+     ```
+   - **Windows**：
+     - 下載並安裝 [Tesseract-OCR installer](https://github.com/UB-Mannheim/tesseract/wiki)
+     - 預設安裝路徑：`C:\Program Files\Tesseract-OCR\tesseract.exe`
+   - **Linux**：
+     ```bash
+     sudo apt-get install tesseract-ocr
+     ```
+
+### 環境變數設定
+
+1. 複製 `.env.example` 到 `.env`：
+   ```bash
+   cp .env.example .env
+   ```
+
+2. 在 `.env` 中設定必要的環境變數：
+   - `TELEGRAM_BOT_TOKEN`：你的 Telegram Bot Token
+   - `GOOGLE_SHEETS_ID`：Google Sheets ID
+   - `OPENAI_API_KEY`：OpenAI API 金鑰
+   - `DOCSEND_EMAIL`：用於存取 DocSend 的 email
+   - `WORKING_DIRECTORY`：工作目錄路徑
+   - `TESSERACT_CMD`：Tesseract OCR 執行檔路徑
+     - Windows：`C:\\Program Files\\Tesseract-OCR\\tesseract.exe`
+     - macOS：`/usr/local/bin/tesseract`
+     - Linux：`/usr/bin/tesseract`
+
+### Tesseract OCR 設定說明
+
+Tesseract OCR 用於從圖片中提取文字，主要用於：
+- PDF 檔案中的圖片文字辨識
+- DocSend 文件中的圖片內容辨識
+- 投影片中的圖片文字擷取
+
+確保 `TESSERACT_CMD` 環境變數指向正確的 Tesseract 執行檔路徑：
+
+1. **檢查安裝**：
+   ```bash
+   # macOS/Linux
+   which tesseract
+   
+   # Windows (PowerShell)
+   Get-Command tesseract
+   ```
+
+2. **驗證設定**：
+   ```python
+   import pytesseract
+   print(pytesseract.get_tesseract_version())
+   ```
+
+如果遇到問題，請確認：
+1. Tesseract 已正確安裝
+2. 環境變數路徑正確
+3. 執行檔有適當的執行權限 
