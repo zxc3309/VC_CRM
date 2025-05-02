@@ -44,4 +44,10 @@ ENV/
 
 # Local development
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Debug Docsend
+debug_docsend.html
+
+# Debug Frames
+debug_frame_*.html 
