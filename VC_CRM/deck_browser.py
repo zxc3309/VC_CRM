@@ -17,18 +17,20 @@ import json
 import fitz  # PyMuPDF for PDF
 import tempfile
 from pptx import Presentation
-import sys
 
-# 2. 添加系統編碼設定
+
+
+# 設定系統編碼
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 sys.stdout.reconfigure(encoding='utf-8')
+sys.stderr.reconfigure(encoding='utf-8')
 
-# 3. 載入環境變數
+# 1. First load environment variables
 load_dotenv()
 
 # 4. 配置日誌
 logger = logging.getLogger(__name__)
-
+print("OPENAI_API_KEY:", os.getenv("OPENAI_API_KEY"))
 # 5. 配置 Tesseract 路徑
 tesseract_path = os.getenv('TESSERACT_CMD')
 if tesseract_path:
@@ -83,7 +85,10 @@ class DeckBrowser:
             self.logger.info(f"開始處理 Google Drive")
             return await self.run_gdrive_analysis(message)
         else:
-            raise ValueError("⚠️ 無法判斷輸入資料來源。請確認是否包含合法連結或附件。")
+            # 新增：允許純文字直接丟給 GPT
+            self.logger.info("未偵測到連結或附件，直接分析純文字內容")
+            summary = await summarize_pitch_deck(message)
+            return [summary] if summary else [{"error": "❌ 純文字分析失敗"}]
 
     async def run_gdrive_analysis(self, message: str) -> Dict[str, Any]:
         self.logger.info(f"📥 開始處理 Google Drive 連結: {message}")
@@ -479,9 +484,14 @@ async def ocr_images_from_urls(image_urls: List[str]) -> str:
 
 async def summarize_pitch_deck(ocr_text: str) -> Dict:
     """用 GPT 摘要 Pitch Deck OCR 文字為結構化大綱並回傳 dict"""
+    # 確保輸入文字是 UTF-8 編碼
+    if isinstance(ocr_text, str):
+        ocr_text = ocr_text.encode('utf-8', errors='ignore').decode('utf-8')
+
+    # 使用英文 prompt 避免編碼問題
     prompt = f"""
-請根據以下 Pitch Deck OCR 內容，整理成一份結構化的大綱摘要。
-返回以下 JSON 格式:
+Based on the following Pitch Deck content, create a structured summary.
+Return in the following JSON format:
 {{
   "company": "company_name",
   "problem": "problem_statement",
@@ -491,10 +501,8 @@ async def summarize_pitch_deck(ocr_text: str) -> Dict:
   "market": "what's the target market and it's description",
   "funding_team": "founding_team and their background",
 }}
-規則：
 
-
-Pitch Deck OCR:
+Pitch Deck Content:
 {ocr_text}
 """
 
@@ -502,7 +510,7 @@ Pitch Deck OCR:
         completion = await openai_client.chat.completions.create(
             model="gpt-4.1",
             messages=[
-                {"role": "system", "content": "你是一位幫助投資人整理 Pitch Deck 的專業分析師"},
+                {"role": "system", "content": "You are a professional analyst helping investors organize Pitch Deck information."},
                 {"role": "user", "content": prompt}
             ],
             response_format={"type": "json_object"}
@@ -510,9 +518,13 @@ Pitch Deck OCR:
         raw_output = json.loads(completion.choices[0].message.content)
         logger.info(f"成功提取Deck信息")       
         return raw_output
-    except json.JSONDecodeError as e:
-        logger.error(f"GPT 回傳非 JSON 格式：{e}")
-        return None  # Do not return raw_text to avoid adding it to the output
+    except Exception as e:
+        logger.error(f"GPT 處理失敗：{str(e)}")
+        return {
+            "error": f"分析失敗: {str(e)}",
+            "company": "未知公司",
+            "summary": "分析失敗"
+        }
     
 
 async def debug_all_iframes(page):

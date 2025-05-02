@@ -23,8 +23,12 @@ class DealAnalyzer:
         
         # 初始化 OpenAI 客戶端
         if api_key:
-            self.logger.info(f"API key length: {len(api_key)}")
-            self.logger.info(f"API key first 10 characters: {api_key[:10]}...")
+            # 只記錄 API key 是否存在，不記錄實際內容
+            self.logger.info("API key is set")
+            
+            # 確保 API key 只包含 ASCII 字元
+            api_key = api_key.encode('ascii', errors='ignore').decode('ascii')
+            
             self.openai_client = AsyncOpenAI(api_key=api_key)
         else:
             self.logger.error("OPENAI_API_KEY environment variable is not set.")
