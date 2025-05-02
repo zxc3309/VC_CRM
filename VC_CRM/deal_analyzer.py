@@ -42,6 +42,7 @@ class DealAnalyzer:
         
         Parameters:
         message_text: The text containing deal information
+        deck_data: Data extracted from the pitch deck
         
         Returns:
         A dictionary containing analyzed deal data
@@ -49,7 +50,10 @@ class DealAnalyzer:
         try:
             self.logger.info("Analyzing deal information...")
 
-            initial_info = await self._extract_initial_info(message_text)
+            # 轉換Deck內容為可供GenAI閱讀的形式
+            formatted_deck_text = self.format_deck_summary(deck_data)
+
+            initial_info = await self._extract_initial_info(message_text, formatted_deck_text)
             company_name = initial_info.get("company_name", "")
             founder_names = initial_info.get("founder_names", [])
             raw_company_info = initial_info.get("company_info", "")
@@ -59,9 +63,6 @@ class DealAnalyzer:
                 self.logger.error("deck_data is not a list of dict or empty.")
                 raw_company_info_funding_team = ""
             funding_info = initial_info.get("funding_info", "")
-            
-            #轉換Deck內容為可供GenAI閱讀的形式
-            formatted_deck_text = self.format_deck_summary(deck_data)
             
             # 如果未找到公司名稱，返回有限的結果
             if not company_name:
@@ -77,7 +78,7 @@ class DealAnalyzer:
             self.logger.info(f"找到創辦人名稱: {founder_names}")
             
             #尋找更多公司信息
-            company_info = await self._get_company_details(company_name, founder_names, raw_company_info, formatted_deck_text)
+            company_info = await self._get_company_details(company_name, founder_names, message_text, formatted_deck_text)
             self.logger.info(f"獲取到公司 {company_name} 的額外信息")
             
             #為每個創辦人獨立研究背景
@@ -112,42 +113,53 @@ class DealAnalyzer:
         deck_dict = deck_data[0]
         return '\n'.join(f"[{key.capitalize()}] {value}" for key, value in deck_dict.items())
 
-    async def _extract_initial_info(self, message_text: str) -> Dict[str, Any]:
+    async def _extract_initial_info(self, message_text: str, formatted_deck_text: str) -> Dict[str, Any]:
         """
-        從文本消息中萃取公司名稱、創始人名稱、既有公司資訊與募資資訊
+        從文本消息和 Deck 摘要中萃取公司名稱、創始人名稱、既有公司資訊與募資資訊
         
         參數:
         message_text: 包含交易信息的文本
+        formatted_deck_text: 從 Deck 提取的文本摘要
         
         返回:
         包含公司名稱、創始人名稱、既有公司資訊與募資資訊的字典
         """
         try:
-            self.logger.info("從消息中提取初始信息")
+            self.logger.info("從消息和 Deck 摘要中提取初始信息")
             
-            system_prompt = """提取消息中的公司名稱、創始人名稱、既有公司資訊與募資資訊。
+            system_prompt = """從提供的文本消息和 Deck 摘要中提取公司名稱、創始人名稱、公司資訊和募資資訊。
+            優先從 Deck 摘要中提取信息，如果 Deck 摘要中沒有，再參考文本消息。
             返回 JSON 格式:
             {
                 "company_name": "公司全名",
                 "founder_names": ["創始人1", "創始人2", ...]
-                "company_info": "公司資訊",
+                "company_info": "公司資訊摘要",
                 "funding_info": "募資資訊(金額或是其他)"
             }
             
             如果找不到相關信息，返回空字符串或空列表。
             盡量提取完整的公司名稱，而不是縮寫。"""
 
+            # 合併信息來源
+            combined_input = f"""
+文本消息:
+{message_text}
+
+Deck 摘要:
+{formatted_deck_text}
+            """
+
             completion = await self.openai_client.chat.completions.create(
-                model="gpt-4.1",
+                model="gpt-4.1", # 或許考慮 gpt-4-turbo 處理更長文本？
                 response_format={"type": "json_object"},
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": message_text}
+                    {"role": "user", "content": combined_input} # 使用合併後的輸入
                 ]
             )
             
             # Log the raw response for debugging
-            self.logger.info(f"Raw completion response: {completion.choices[0].message.content}")
+            self.logger.info(f"Raw completion response (_extract_initial_info): {completion.choices[0].message.content}")
             
             result = json.loads(completion.choices[0].message.content)
             self.logger.info(f"提取結果: 公司名稱={result.get('company_name', '')}, "
@@ -157,7 +169,8 @@ class DealAnalyzer:
            
         except Exception as e:
             self.logger.error(f"提取初始信息時出錯: {str(e)}", exc_info=True)
-            return {"company_name": "", "founder_names": []}
+            # 返回空字典以避免下游錯誤
+            return {"company_name": "", "founder_names": [], "company_info": "", "funding_info": ""}
  
     async def _search_founder_names(self, company_name: str, raw_company_info_funding_team: str) -> Dict[str, Any]:
         """
@@ -241,33 +254,36 @@ class DealAnalyzer:
             self.logger.error(f"搜索創始人時出錯: {str(e)}", exc_info=True)
             return {'founder_names': [], 'founder_titles': []}
 
-    async def _get_company_details(self, company_name: str, founder_name: str, raw_company_info: str, formatted_deck_text: str) -> Dict[str, Any]:
+    async def _get_company_details(self, company_name: str, founder_names: list, message_text: str, formatted_deck_text: str) -> Dict[str, Any]:
         """
-        獲取公司的詳細信息，使用公司名稱和創始人名稱
+        獲取公司的詳細信息，綜合考慮消息文本、Deck 摘要和網絡搜索結果
         
         參數:
         company_name: 公司名稱
-        founder_name: 創始人名稱 (可選)
+        founder_names: 創始人名稱列表 (可選)
+        message_text: 原始消息文本
+        formatted_deck_text: Deck 文本摘要
         
         返回:
         包含公司詳細信息的字典
         """
         try:
-            self.logger.info(f"獲取 {company_name} 的詳細信息")
+            self.logger.info(f"獲取 {company_name} 的詳細信息 (綜合來源)")
 
-            search_query = f"{company_name} company profile, business overview, financial data, , products&services description, market position, financials, key milestones, news"
-            if founder_name:
-                search_query += f", founded by {founder_name}"
-            
-            # 搜索公司信息
+            # 構建搜索查詢 (如果需要)
+            search_query = f"{company_name} company profile, business overview, financial data, products & services description, market position, financials, key milestones, news"
+            if founder_names:
+                 # 將創辦人列表轉換為字串加入查詢
+                founder_query_part = ", ".join(founder_names)
+                search_query += f", founded by {founder_query_part}"
+
+            # 執行網絡搜索
             search_results = await self._web_search(search_query)
-            
-            if not search_results or not search_results.get('content'):
-                self.logger.warning(f"無法找到 {company_name} 的詳細信息")
-                return {}
-            
-            # 提取結構化信息           
-            company_prompt = f"""根據以下搜索結果，提供 {company_name} 的全面信息。
+            search_content = search_results.get('content', '') if search_results else ''
+
+            # 提取結構化信息 - prompt 現在包含 message_text, deck_text, web_search
+            company_prompt = f"""根據以下提供的所有信息（文本消息、Deck 摘要、網絡搜索結果），提供 {company_name} 的全面信息。
+            優先級： Deck 摘要 > 網絡搜索結果 > 文本消息。
             返回以下 JSON 格式:
             {{
                 "company_introduction": "公司簡介與背景",
@@ -277,36 +293,42 @@ class DealAnalyzer:
                 "financials": "財務狀況（如有）",
                 "key_milestones": "重要的里程碑或新聞事件"
             }}
-            
+
             規則:
-            1. 如果找不到信息，使用 "N/A"
-            2. 保持回應豐富度和基於事實
-            3. 盡可能列出之前的公司產品與服務內容
-            4. 請使用英文回應
-            
-            
-            搜索結果:
-            {search_results.get('content', '')}
-            {raw_company_info}
+            1. 綜合所有來源的信息，提供最完整、最準確的回答。
+            2. 如果某個欄位在所有來源中都找不到信息，使用 "N/A"。
+            3. 保持回應豐富度和基於事實。
+            4. 盡可能列出之前的公司產品與服務內容。
+            5. 請使用英文回應。
+
+            信息來源:
+
+            1. 文本消息:
+            {message_text}
+
+            2. Deck 摘要:
             {formatted_deck_text}
+
+            3. 網絡搜索結果:
+            {search_content}
             """
-            
+
             completion = await self.openai_client.chat.completions.create(
-                model="gpt-4.1",
+                model="gpt-4.1", # 考慮是否需要更強模型處理綜合信息
                 messages=[
-                    {"role": "system", "content": "你是一個專門分析公司信息的 AI 分析師。"},
+                    {"role": "system", "content": "你是一個專門分析公司信息的 AI 分析師，需要綜合多個來源的信息。"},
                     {"role": "user", "content": company_prompt}
                 ],
                 response_format={"type": "json_object"}
             )
-            
+
             # 解析分析結果
             company_info = json.loads(completion.choices[0].message.content)
-            
-            # 返回結構化信息
-            # 合併所有欄位成一個字串
+            self.logger.info(f"Raw completion response (_get_company_details): {completion.choices[0].message.content}")
+
+            # 返回結構化信息 - 維持合併為單一介紹字串的格式
             full_company_summary = f"""
-Introduction】
+【Introduction】
 {company_info.get('company_introduction', 'N/A')}
 
 【Business Model】
@@ -325,17 +347,16 @@ Introduction】
 {company_info.get('key_milestones', 'N/A')}
             """.strip()
 
-            # 最終只保留整理後的綜合介紹在 company_info
             result = {
                 "company_introduction": full_company_summary
             }
-            
-            self.logger.info(f"成功提取 {company_name} 的公司信息")
+
+            self.logger.info(f"成功提取 {company_name} 的公司信息 (綜合來源)")
             return result
                 
         except Exception as e:
             self.logger.error(f"獲取公司詳細信息時出錯: {str(e)}", exc_info=True)
-            return {}
+            return {"company_introduction": "Error retrieving company details."} # 返回錯誤信息而非空字典
 
     async def _research_founder_background(self, founder_name: str, company_name: str, raw_company_info_funding_team: str) -> Dict[str, Any]:
         """
