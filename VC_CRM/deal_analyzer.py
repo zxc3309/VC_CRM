@@ -5,8 +5,6 @@ from typing import Dict, Any
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
     
 class DealAnalyzer:
    
@@ -82,16 +80,20 @@ class DealAnalyzer:
             company_info = await self._get_company_details(company_name, founder_names, raw_company_info, formatted_deck_text)
             self.logger.info(f"獲取到公司 {company_name} 的額外信息")
             
-            #尋找更多創辦人信息
-            founder_info = await self._research_founder_background(founder_names, company_name, raw_company_info_funding_team)
-            self.logger.info(f"獲取到創辦人 {founder_names} 的額外信息")
+            #為每個創辦人獨立研究背景
+            all_founder_info = {}
+            if founder_names:
+                # 只處理第一位創辦人（簡單解決方案）
+                first_founder = founder_names[0]
+                founder_info = await self._research_founder_background(first_founder, company_name, raw_company_info_funding_team)
+                all_founder_info = founder_info  # 使用第一位創辦人的資料
             
             # Compile the deal data
             deal_data = {
                 "company_name": company_name,
                 "founder_name": [{"name": name} for name in founder_names] if founder_names else [],
                 "company_info": company_info,
-                "founder_info": founder_info,
+                "founder_info": all_founder_info,
                 "funding_info": funding_info
             }
             
