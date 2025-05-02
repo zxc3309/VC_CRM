@@ -127,6 +127,7 @@ class DealSourcingBot:
     #實際執行主程式
 async def run_bot():
     # 設定工作目錄
+    
     os.chdir(os.getenv("WORKING_DIRECTORY"))
     
     logger.info("Initializing bot...")
