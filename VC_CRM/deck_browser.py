@@ -1,8 +1,8 @@
 import os
-import sys
 from io import BytesIO  # 移到最上面
 import logging
 from dotenv import load_dotenv
+from utils.path_helper import PathHelper
 import re
 import asyncio
 from bs4 import BeautifulSoup
@@ -18,31 +18,18 @@ import fitz  # PyMuPDF for PDF
 import tempfile
 from pptx import Presentation
 
-
-
-# 設定系統編碼
-os.environ['PYTHONIOENCODING'] = 'utf-8'
-sys.stdout.reconfigure(encoding='utf-8')
-sys.stderr.reconfigure(encoding='utf-8')
-
-# 1. First load environment variables
+# Load environment variables
 load_dotenv()
 
-# 4. 配置日誌
+# Pytesseract Path
+pytesseract.pytesseract.tesseract_cmd = os.getenv('TESSERACT')
+
+
+# 配置日誌
 logger = logging.getLogger(__name__)
 print("OPENAI_API_KEY:", os.getenv("OPENAI_API_KEY"))
 # 5. 配置 Tesseract 路徑
 tesseract_path = os.getenv('TESSERACT_CMD')
-if tesseract_path:
-    logger.info(f"Using Tesseract path from environment variable: {tesseract_path}")
-    pytesseract.pytesseract.tesseract_cmd = tesseract_path
-else:
-    logger.warning("TESSERACT_CMD not set in environment variables. Using default path.")
-    # Fallback to default paths based on OS
-    if sys.platform.startswith('win'):
-        pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-    elif sys.platform.startswith('darwin'):  # macOS
-        pytesseract.pytesseract.tesseract_cmd = '/usr/local/bin/tesseract'
 
 logger.info(f"Final Tesseract path: {pytesseract.pytesseract.tesseract_cmd}")
 
@@ -54,6 +41,7 @@ class DeckBrowser:
         self.browser = None
         self.logger = logging.getLogger(__name__)
         self.email = os.getenv("DOCSEND_EMAIL")  # 替換為您的電子郵件
+        self.path_helper = PathHelper()
 
     #決定流程
     SourceType = Literal["docsend", "attachment", "gdrive", "unknown"]
@@ -128,7 +116,7 @@ class DeckBrowser:
         for file in attachments:
             path = file.get("path")
             name = file.get("name", "unnamed")
-            suffix = os.path.splitext(name)[-1].lower()
+            suffix = self.path_helper.get(name).suffix.lower()
 
             self.logger.info(f"📂 開始分析附件: {name}")
 
@@ -136,20 +124,21 @@ class DeckBrowser:
 
             try:
                 # Check file size before processing
-                if not os.path.exists(path) or os.path.getsize(path) < 1024:
+                file_path_obj = self.path_helper.get(path)
+                if not file_path_obj.exists() or file_path_obj.stat().st_size < 1024:
                     self.logger.error(f"❌ 檔案 {name} ({path}) 太小或不存在，可能下載失敗。")
                     results.append({"error": f"❌ 檔案 {name} 下載失敗或不是有效的檔案。"})
                     continue
 
                 if suffix == ".pdf":
-                    doc = fitz.open(path)
+                    doc = fitz.open(str(file_path_obj))
                     for page in doc:
                         extracted_text += page.get_text("text") + "\n"
                     doc.close()
 
                 elif suffix == ".pptx":
                     try:
-                        prs = Presentation(path)
+                        prs = Presentation(str(file_path_obj))
                     except Exception as e:
                         self.logger.error(f"❌ 無法開啟 PPTX 檔案 {name}: {type(e).__name__}: {e}")
                         results.append({"error": f"❌ 無法開啟 PPTX 檔案 {name}: {type(e).__name__}: {e}"})
@@ -164,12 +153,12 @@ class DeckBrowser:
 
                     image_urls = []
                     if suffix == ".pdf":
-                        doc = fitz.open(path)
+                        doc = fitz.open(str(file_path_obj))
                         for page_num, page in enumerate(doc):
                             pix = page.get_pixmap(dpi=200)
-                            img_path = f"{path}_page_{page_num}.png"
-                            pix.save(img_path)
-                            image_urls.append(f"file://{img_path}")
+                            img_path_obj = self.path_helper.get(f"{file_path_obj}_page_{page_num}.png")
+                            pix.save(str(img_path_obj))
+                            image_urls.append(f"file://{img_path_obj}")
                         doc.close()
 
                     elif suffix == ".pptx":
@@ -314,13 +303,16 @@ class DeckBrowser:
             await asyncio.sleep(random.uniform(2, 5))
             
             # 截圖以便調試
-            debug_screenshot = f"/tmp/docsend_debug_{random.randint(1000, 9999)}.png"
-            await page.screenshot(path=debug_screenshot)
-            self.logger.info(f"保存頁面截圖至: {debug_screenshot}")
+            debug_screenshot_name = f"docsend_debug_{random.randint(1000, 9999)}.png"
+            debug_screenshot_path = str(self.path_helper.get("tmp", debug_screenshot_name))
+            self.path_helper.ensure_dir("tmp")
+            await page.screenshot(path=debug_screenshot_path)
+            self.logger.info(f"保存頁面截圖至: {debug_screenshot_path}")
             
             # Debug 將整頁 HTML 儲存下來
             html = await page.content()
-            with open("debug_docsend.html", "w", encoding="utf-8") as f:
+            debug_html_path = self.path_helper.get("debug_docsend.html")
+            with debug_html_path.open("w", encoding="utf-8") as f:
                 f.write(html)
 
             # Debug 顯示目前頁面上的所有 iframe（若有）
@@ -540,8 +532,10 @@ async def debug_all_iframes(page):
         try:
             # 儲存 HTML
             html = await frame.content()
-            file_path = f"debug_frame_{idx}.html"
-            with open(file_path, "w", encoding="utf-8") as f:
+            from utils.path_helper import PathHelper as _PH
+            _ph = _PH()
+            file_path = _ph.get(f"debug_frame_{idx}.html")
+            with file_path.open("w", encoding="utf-8") as f:
                 f.write(html)
             print(f"📝 已儲存 HTML 到 {file_path}")
 

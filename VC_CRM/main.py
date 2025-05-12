@@ -9,10 +9,6 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from deal_analyzer import DealAnalyzer
 from sheets_manager import SheetsManager
 from deck_browser import DeckBrowser
-from urllib.parse import urlparse, parse_qs
-import fitz  # PyMuPDF for PDF
-import tempfile
-from pptx import Presentation
 
 # Load environment variables
 load_dotenv()
