@@ -29,7 +29,7 @@ pytesseract.pytesseract.tesseract_cmd = os.getenv('TESSERACT')
 logger = logging.getLogger(__name__)
 print("OPENAI_API_KEY:", os.getenv("OPENAI_API_KEY"))
 # 5. 配置 Tesseract 路徑
-tesseract_path = os.getenv('TESSERACT_CMD')
+tesseract_path = os.getenv('TESSERACT')
 
 logger.info(f"Final Tesseract path: {pytesseract.pytesseract.tesseract_cmd}")
 
@@ -458,6 +458,7 @@ async def ocr_images_from_urls(image_urls: List[str]) -> str:
             elif url.startswith("http"):
                 response = requests.get(url)
                 img = Image.open(BytesIO(response.content))
+                logger.info(f"📐 圖片尺寸: {img.size}")
             else:
                 logger.warning(f"❌ 不支援的圖片 URL 格式: {url[:100]}...")
                 continue
