@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
+from openai import AsyncOpenAI
 
 class DocManager:
     def __init__(self):
@@ -17,6 +18,7 @@ class DocManager:
         )
         self.docs_service = build('docs', 'v1', credentials=self.credentials, cache_discovery=False)
         self.drive_service = build('drive', 'v3', credentials=self.credentials, cache_discovery=False)
+        self.openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     def stringify(self, field):
         if isinstance(field, list):
@@ -52,6 +54,52 @@ class DocManager:
             formatted.append("\n".join(lines))
         return "\n\n".join(formatted)
 
+    def format_questions(self, questions):
+        """將問題列表格式化為純文字段落"""
+        formatted = []
+        for question in questions:
+            if isinstance(question, str):
+                formatted.append(question)
+            elif isinstance(question, dict):
+                for key, value in question.items():
+                    formatted.append(f"{key}: {value}")
+        return "\n".join(formatted)
+    
+    async def suggest_questions_with_gpt(self, deal_data, deck_summary: str) -> list[str]:
+        """根據 pitch deck 摘要，自動建議第一次接觸該新創應該問的問題"""
+        system_prompt = """你是一位資深創投分析師，根據以下 pitch deck 摘要，請列出第一次會談時應該問這間新創團隊的 5 個關鍵問題，問題要具體、實用、有洞察力。
+            返回 JSON 格式:
+            {
+            "questions": [
+                "問題 1：問題內容敘述",
+                "問題 2：問題內容敘述",
+                ...
+            ]
+            }
+            """
+        
+        user_prompt = f"Pitch Deck 摘要如下：\n公司資訊如下：\n{json.dumps(deal_data, indent=2, ensure_ascii=False)}\n\nPitch Deck 摘要如下：\n{deck_summary}\n請列出建議問題："
+
+        response = await self.openai_client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.7,
+            response_format={"type": "json_object"}
+        )
+
+
+        result = response.choices[0].message.content
+        try:
+            questions = json.loads(result).get("questions", [])
+        except Exception:
+            # fallback in case not JSON-formatted
+            questions = [line.strip("- ").strip() for line in result.strip().split("\n") if line]
+
+        return questions
+
     async def create_doc(self, deal_data, deck_data):
         # 資料前處理
         all_founder_names = ", ".join([f["name"] for f in deal_data.get("founder_name", [])]) if deal_data.get("founder_name") else "N/A"
@@ -65,6 +113,7 @@ class DocManager:
         company_info = self.stringify(deal_data.get("company_info", {}).get("company_introduction", "N/A"))
         funding_info = self.stringify(deal_data.get("funding_info", "N/A"))
         deck_summary_str = self.format_deck_summary(deck_data)
+        suggested_questions = self.format_questions(await self.suggest_questions_with_gpt(deal_data, deck_summary_str))
 
         doc_title = f"{company_name} Log"
 
@@ -93,6 +142,7 @@ class DocManager:
             ("Founder Education", founder_education),
             ("Founder Achievements", founder_achievements),
             ("Deck Summary", deck_summary_str),
+            ("Suggested Questions", suggested_questions)
         ]
 
         # 插入請求集合
@@ -136,13 +186,13 @@ class DocManager:
                         'endIndex': index + len(content)
                     },
                     'textStyle': {
-                        'italic': True,
                         'fontSize': {'magnitude': 12, 'unit': 'PT'}
                     },
-                    'fields': 'italic,fontSize'
+                    'fields': 'fontSize'
                 }
             })
-            index += len(content) + 2  # 內文 + 兩個換行
+            content_bytes = content.encode('utf-16-le')
+            index += len(content_bytes) // 2 + 2  # 內文 + 兩個換行
 
         # 執行 batchUpdate 插入並套用格式
         self.docs_service.documents().batchUpdate(
