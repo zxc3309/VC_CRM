@@ -15,7 +15,7 @@ class SheetsManager:
             scopes=self.SCOPES
         )
     
-    async def save_deal(self, deal_data, deck_data):
+    async def save_deal(self, deal_data, doc_url, summary_text):
         """Save deal information to Google Sheets."""
         service = build('sheets', 'v4', credentials=self.credentials, cache_discovery=False)
 
@@ -86,7 +86,7 @@ class SheetsManager:
         company_info_str = stringify(company_info)
         funding_info_str = stringify(deal_data.get('funding_info', 'N/A'))
         # ---- 修改完成 ----
-        deck_summary_str = json.dumps(deck_data, ensure_ascii=False, indent=2)
+        deck_summary_str = stringify(summary_text)
         
         
         # Prepare row data
@@ -102,7 +102,8 @@ class SheetsManager:
             founder_education,
             founder_achievements,
             founder_linkedin,
-            deck_summary_str # deck_summary 已經是 JSON 字串
+            deck_summary_str, # deck_summary 已經是 JSON 字串
+            f'=HYPERLINK("{doc_url}", "Open")'  # 正確地插入變數值
         ]
 
         # Check and update headers if needed
@@ -118,11 +119,12 @@ class SheetsManager:
             'Education',
             'Achievements',
             'Founder\'s LinkedIn',
-            'Deck Summary'
+            'Deck Summary',
+            'Log Link'
         ]
         
         # Get the first row to check headers
-        header_range = 'Deals!A1:L1'  # Update range to include new column
+        header_range = 'Deals!A1:M1'  # Update range to include new column
         header_result = service.spreadsheets().values().get(
             spreadsheetId=self.SPREADSHEET_ID,
             range=header_range
@@ -138,7 +140,7 @@ class SheetsManager:
             ).execute()
         
         # Append row to sheet
-        range_name = 'Deals!A:L'  # Update range to include new column
+        range_name = 'Deals!A:M'  # Update range to include new column
         value_input_option = 'USER_ENTERED'
         insert_data_option = 'INSERT_ROWS'
         

@@ -39,9 +39,6 @@ ENV/
 # Logs
 *.log
 
-# Google Service Account
-*.json
-
 # Local development
 .DS_Store
 Thumbs.db
