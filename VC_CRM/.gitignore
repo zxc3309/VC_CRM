@@ -48,3 +48,7 @@ debug_docsend.html
 
 # Debug Frames
 debug_frame_*.html 
+
+# 忽略 VC_CRM/VC_CRM/ 裡面的 debug 檔
+VC_CRM/VC_CRM/debug_docsend.html
+VC_CRM/VC_CRM/debug_frame_*.html
