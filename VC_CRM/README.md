@@ -1,6 +1,6 @@
 # VC Deal Sourcing Bot
 
-自動化的 VC deal sourcing 工作流程，通過 Telegram Bot 接收並分析潛在投資機會，使用 OpenAI GPT-4 進行智能分析，並自動整理到 Google Sheets。
+自動化的 VC deal sourcing 工作流程，通過 Telegram Bot 接收並分析潛在投資機會，使用 OpenAI GPT-4 進行智能分析，並自動整理到 Google Doc 與 Sheets。
 
 ## 功能特點
 
@@ -11,8 +11,12 @@
   - 分析相關網址和附件
 - 使用 OpenAI 的網路搜索功能：
   - 自動搜索並驗證公司信息
-  - 獲取最新的公司動態
+  - 獲取最新的公司動態 
   - 提供可信的信息來源引用
+- 自動整理到 Google Docs：
+  - 結構化提供公司資訊
+  - 結構化提供創辦人資訊
+  - 提供面談提問清單參考
 - 自動整理到 Google Sheets：
   - 結構化的數據展示
   - 可點擊的參考來源
@@ -20,9 +24,9 @@
 
 ## 系統要求
 
-- Python 3.7.1 或更高版本
+- Python 3.8 或更高版本
 - OpenAI API 密鑰（支持 GPT-4）
-- Google Cloud 項目和服務帳號
+- Google Cloud Service Account（開啟 Docs + Sheets API）
 - Telegram Bot Token
 
 ## 安裝步驟
@@ -33,10 +37,14 @@ git clone [your-repo-url]
 cd vc-crm
 ```
 
-2. 安裝依賴：
+2. 使用安裝腳本快速安裝：
 ```bash
-pip install -r requirements.txt
+python install.py
 ```
+此步驟會自動：
+- 安裝 Python 套件需求
+- 安裝 Playwright 瀏覽器引擎
+- 檢查是否已安裝 Tesseract
 
 3. 配置環境變數：
    - 複製 `.env.example` 到 `.env`
@@ -53,26 +61,25 @@ pip install -r requirements.txt
      OPENAI_API_KEY=your_openai_api_key_here
      ```
 
-4. 設置 Google Sheets：
+4. 建立 Google Sheets 與 Docs 權限：
    - 創建新的 Google Sheets
-   - 創建名為 "Deals" 的工作表
+   - 創建名為 "Deals" 的工作表，並授權給你的 Service Account
+   - 創建新的 Google Drive Folder，並授權給你的 Service Account
    - 系統會自動創建並格式化以下欄位：
      - Timestamp
      - Company Name
-     - Product Description
-     - Founders
-     - Traction
-     - Company Description
-     - Founded Year
-     - Location
+     - Company Introduction
      - Funding Information
-     - Market/Industry
-     - Key Achievements
-     - URLs
-     - Sources (含引用連結)
-     - Additional Metrics
-     - Raw Message
-   - 分享表格給你的 Google Service Account 郵箱（編輯權限）
+     - Founder Names
+     - Founder Titles
+     - Founder Background
+     - Previous Companies
+     - Education
+     - Achievements
+     - Founder's LinkedIn
+     - Deck Summary
+     - Log Link
+   - 分享給你的 Google Service Account 郵箱（編輯權限）
 
 ## 使用方法
 
@@ -88,7 +95,7 @@ python main.py
    - 機器人會自動：
      1. 分析訊息內容
      2. 搜索並驗證公司信息
-     3. 整理所有信息到 Google Sheets
+     3. 整理所有信息到 Google Doc 與 Google Sheets
      4. 回覆處理結果和表格連結
 
 ## API 使用說明
@@ -161,15 +168,16 @@ python main.py
    ```
 
 2. 在 `.env` 中設定必要的環境變數：
-   - `TELEGRAM_BOT_TOKEN`：你的 Telegram Bot Token
+   - `TELEGRAM_BOT_TOKEN`：Telegram Bot Token（由 @BotFather 建立）
    - `GOOGLE_SHEETS_ID`：Google Sheets ID
    - `OPENAI_API_KEY`：OpenAI API 金鑰
-   - `DOCSEND_EMAIL`：用於存取 DocSend 的 email
-   - `WORKING_DIRECTORY`：工作目錄路徑
-   - `TESSERACT_CMD`：Tesseract OCR 執行檔路徑
+   - `DOCSEND_EMAIL`：用於自動登入 DocSend 的 Email
+   - `WORKING_DIRECTORY`：專案啟動時的工作資料夾路徑（影響下載與暫存目錄）
+   - `TESSERACT`：Tesseract OCR 執行檔路徑
      - Windows：`C:\\Program Files\\Tesseract-OCR\\tesseract.exe`
      - macOS：`/usr/local/bin/tesseract`
      - Linux：`/usr/bin/tesseract`
+   - `GOOGLE_DRIVE_FOLDER_ID`：自動建立 Google Docs 檔案的雲端資料夾 ID
 
 ### Tesseract OCR 設定說明
 
@@ -178,7 +186,7 @@ Tesseract OCR 用於從圖片中提取文字，主要用於：
 - DocSend 文件中的圖片內容辨識
 - 投影片中的圖片文字擷取
 
-確保 `TESSERACT_CMD` 環境變數指向正確的 Tesseract 執行檔路徑：
+確保 `TESSERACT` 環境變數指向正確的 Tesseract 執行檔路徑：
 
 1. **檢查安裝**：
    ```bash
