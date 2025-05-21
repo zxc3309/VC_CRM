@@ -532,8 +532,13 @@ class DeckBrowser:
     async def is_pitch_deck(self, page) -> bool:
         """判斷網頁是否為 Pitch Deck"""
         try:
-            # 1. 檢查 URL 關鍵字
+            # 0. 首先檢查是否為社群網站
             url = page.url.lower()
+            social_media_domains = ['x.com', 'twitter.com', 'facebook.com', 'linkedin.com', 'instagram.com']
+            if any(domain in url for domain in social_media_domains):
+                return False
+
+            # 1. 檢查 URL 關鍵字
             deck_keywords = ['pitch', 'deck', 'presentation', 'slides', 'investor', 'fundraising']
             if any(keyword in url for keyword in deck_keywords):
                 return True
@@ -569,8 +574,16 @@ class DeckBrowser:
             text_blocks = await page.query_selector_all('p, h1, h2, h3, h4, h5, h6')
             
             # 如果圖片數量較多且文本塊較少，可能是投影片
+            # 但需要確保不是社群網站的結構
             if len(images) > 5 and len(text_blocks) < 10:
-                return True
+                # 檢查是否有社群網站特有的元素
+                social_indicators = [
+                    bool(soup.find('div', class_=lambda x: x and any(word in str(x).lower() for word in ['tweet', 'post', 'status', 'feed', 'timeline']))),
+                    bool(soup.find('div', class_=lambda x: x and any(word in str(x).lower() for word in ['profile', 'avatar', 'user-info']))),
+                    bool(soup.find('div', class_=lambda x: x and any(word in str(x).lower() for word in ['like', 'share', 'comment', 'retweet']))),
+                ]
+                if not any(social_indicators):
+                    return True
 
             # 5. 檢查是否有投影片相關的 JavaScript
             scripts = await page.query_selector_all('script')
@@ -1105,7 +1118,7 @@ if __name__ == "__main__":
         Butter is also governance related project and working with Uniswap and Optimism foundation for bringing Futarchy (prediction market style govnernance framework) on web3
         If you're interested in Butter feel free to lmk. Happy to connect with you and the team :
         - Blurb: Butter is a governance project which is building Conditional Funding Markets with Uniswap and Optimism foundation.
-        - Deck: https://pitch.com/v/speculate-to-allocate-sjwkjp/79c2235c-f6b1-497f-9c64-d6ed63b6b1c4
+        - X post: https://x.com/butterygg/status/1910444872903123210
         """
         
         reader = DeckBrowser()
