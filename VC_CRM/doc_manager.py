@@ -150,27 +150,28 @@ class DocManager:
         index = 1  # 開始於 index=1，插入在文件開頭之後
 
         for title, content in sections:
-            # 插入標題
+        # 插入標題
             requests.append({
-                'insertText': {
-                    'location': {'index': index},
-                    'text': f"{title}\n"
-                }
+            'insertText': {
+                'location': {'index': index},
+                'text': f"{title}\n"
+            }
             })
-            requests.append({
-                'updateTextStyle': {
-                    'range': {
-                        'startIndex': index,
-                        'endIndex': index + len(title)
-                    },
-                    'textStyle': {
-                        'bold': True,
-                        'fontSize': {'magnitude': 12, 'unit': 'PT'}
-                    },
-                    'fields': 'bold,fontSize'
-                }
-            })
-            index += len(title) + 1  # 加上換行符
+            if len(title.strip()) > 0:
+                requests.append({
+                    'updateTextStyle': {
+                        'range': {
+                            'startIndex': index,
+                            'endIndex': index + len(title)
+                        },
+                        'textStyle': {
+                            'bold': True,
+                            'fontSize': {'magnitude': 12, 'unit': 'PT'}
+                        },
+                        'fields': 'bold,fontSize'
+                    }
+                })
+            index += len(title) + 1
 
             # 插入內文
             requests.append({
@@ -179,20 +180,23 @@ class DocManager:
                     'text': f"{content}\n\n"
                 }
             })
-            requests.append({
-                'updateTextStyle': {
-                    'range': {
-                        'startIndex': index,
-                        'endIndex': index + len(content)
-                    },
-                    'textStyle': {
-                        'fontSize': {'magnitude': 12, 'unit': 'PT'}
-                    },
-                    'fields': 'fontSize'
-                }
-            })
+
+            if len(content.strip()) > 0:
+                requests.append({
+                    'updateTextStyle': {
+                        'range': {
+                            'startIndex': index,
+                            'endIndex': index + len(content)
+                        },
+                        'textStyle': {
+                            'fontSize': {'magnitude': 12, 'unit': 'PT'}
+                        },
+                        'fields': 'fontSize'
+                    }
+                })
+
             content_bytes = content.encode('utf-16-le')
-            index += len(content_bytes) // 2 + 2  # 內文 + 兩個換行
+            index += len(content_bytes) // 2 + 2  # 每個字 2 bytes，加上 2 個換行
 
         # 執行 batchUpdate 插入並套用格式
         self.docs_service.documents().batchUpdate(
