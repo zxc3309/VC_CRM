@@ -17,6 +17,7 @@ import json
 import fitz  # PyMuPDF for PDF
 import tempfile
 from pptx import Presentation
+from prompt_manager import GoogleSheetPromptManager
 
 # Load environment variables
 load_dotenv()
@@ -41,6 +42,9 @@ if not logger.handlers:
 logger.info(f"Final Tesseract path: {pytesseract.pytesseract.tesseract_cmd}")
 
 logger.setLevel(logging.INFO)
+
+# 在檔案開頭初始化 prompt_manager
+prompt_manager = GoogleSheetPromptManager()
 
 class DeckBrowser:
     
@@ -1021,24 +1025,30 @@ async def summarize_pitch_deck(ocr_text: str, message: str = "") -> Dict:
         if company_name:
             logger.info(f"從消息中提取到公司名稱: {company_name}")
 
-    # 使用英文 prompt 避免編碼問題
-    prompt = f"""
-Based on the following Pitch Deck content, create a structured summary.
-{f'Company name is already known to be: {company_name}' if company_name else ''}
-Return in the following JSON format:
-{{
-  "company": "{company_name if company_name else 'company_name'}",
-  "problem": "problem_statement",
-  "solution": "solution_statement",
-  "business_model": "how they do business",
-  "financials": "financials_summary",
-  "market": "what's the target market and it's description",
-  "funding_team": "founding_team and their background",
-}}
+    # 如果沒有從消息中找到公司名稱，嘗試從 Deck 內容中提取
+    if not company_name:
+        # 使用 GPT 從 Deck 內容中提取公司名稱
+        try:
+            completion = await openai_client.chat.completions.create(
+                model="gpt-4.1",
+                messages=[
+                    {"role": "system", "content": "You are a professional analyst helping investors extract company names from pitch decks."},
+                    {"role": "user", "content": f"Please extract the company name from this pitch deck content. If you find multiple possible names, choose the most likely one. Return only the company name, nothing else.\n\nContent:\n{ocr_text[:2000]}"}  # 只使用前2000個字符來提取公司名稱
+                ]
+            )
+            extracted_name = completion.choices[0].message.content.strip()
+            if extracted_name and len(extracted_name) < 50:  # 確保提取的名稱合理
+                company_name = extracted_name
+                logger.info(f"從 Deck 內容中提取到公司名稱: {company_name}")
+        except Exception as e:
+            logger.warning(f"從 Deck 內容提取公司名稱失敗: {str(e)}")
 
-Pitch Deck Content:
-{ocr_text}
-"""
+    # 使用 GoogleSheetPromptManager 獲取提示詞
+    prompt = prompt_manager.get_prompt_and_format(
+        'summarize_pitch_deck',
+        company_name=company_name if company_name else 'Unknown Company',
+        ocr_text=ocr_text,  # 添加 ocr_text 參數
+    )
 
     try:
         completion = await openai_client.chat.completions.create(
@@ -1051,7 +1061,7 @@ Pitch Deck Content:
         )
         raw_output = json.loads(completion.choices[0].message.content)
         
-        # 如果從消息中提取到了公司名稱，確保使用這個名稱
+        # 如果從消息或 Deck 中提取到了公司名稱，確保使用這個名稱
         if company_name:
             raw_output["company"] = company_name
             
@@ -1118,7 +1128,7 @@ if __name__ == "__main__":
         Butter is also governance related project and working with Uniswap and Optimism foundation for bringing Futarchy (prediction market style govnernance framework) on web3
         If you're interested in Butter feel free to lmk. Happy to connect with you and the team :
         - Blurb: Butter is a governance project which is building Conditional Funding Markets with Uniswap and Optimism foundation.
-        - X post: https://x.com/butterygg/status/1910444872903123210
+        - Deck: https://pitch.com/v/speculate-to-allocate-sjwkjp/79c2235c-f6b1-497f-9c64-d6ed63b6b1c4
         """
         
         reader = DeckBrowser()

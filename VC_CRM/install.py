@@ -18,7 +18,9 @@ REQUIREMENTS = [
     "Pillow>=10.0.0,<12.0.0",
     "PyMuPDF==1.23.7",
     "python-pptx==0.6.21",
-    "nest_asyncio==1.6.0"
+    "nest_asyncio==1.6.0",
+    "gspread==5.12.4",
+    "oauth2client==4.1.3"
 ]
 
 def install_packages():

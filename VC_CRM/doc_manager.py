@@ -1,12 +1,17 @@
 import os
 import json
+import logging
 from datetime import datetime
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from openai import AsyncOpenAI
+from prompt_manager import GoogleSheetPromptManager
 
 class DocManager:
     def __init__(self):
+        # 設置日誌
+        self.logger = logging.getLogger(__name__)
+        
         self.SCOPES = [
             'https://www.googleapis.com/auth/documents',
             'https://www.googleapis.com/auth/drive'
@@ -19,6 +24,7 @@ class DocManager:
         self.docs_service = build('docs', 'v1', credentials=self.credentials, cache_discovery=False)
         self.drive_service = build('drive', 'v3', credentials=self.credentials, cache_discovery=False)
         self.openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.prompt_manager = GoogleSheetPromptManager()
 
     def stringify(self, field):
         if isinstance(field, list):
@@ -67,38 +73,35 @@ class DocManager:
     
     async def suggest_questions_with_gpt(self, deal_data, deck_summary: str) -> list[str]:
         """根據 pitch deck 摘要，自動建議第一次接觸該新創應該問的問題"""
-        system_prompt = """你是一位資深創投分析師，根據以下 pitch deck 摘要，請列出第一次會談時應該問這間新創團隊的 5 個關鍵問題，問題要具體、實用、有洞察力。
-            返回 JSON 格式:
-            {
-            "questions": [
-                "問題 1：問題內容敘述",
-                "問題 2：問題內容敘述",
-                ...
-            ]
-            }
-            """
-        
-        user_prompt = f"Pitch Deck 摘要如下：\n公司資訊如下：\n{json.dumps(deal_data, indent=2, ensure_ascii=False)}\n\nPitch Deck 摘要如下：\n{deck_summary}\n請列出建議問題："
-
-        response = await self.openai_client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.7,
-            response_format={"type": "json_object"}
-        )
-
-
-        result = response.choices[0].message.content
         try:
-            questions = json.loads(result).get("questions", [])
-        except Exception:
-            # fallback in case not JSON-formatted
-            questions = [line.strip("- ").strip() for line in result.strip().split("\n") if line]
+            # 使用 GoogleSheetPromptManager 獲取提示詞
+            prompt = self.prompt_manager.get_prompt_and_format(
+                'suggest_questions',
+                deal_data=json.dumps(deal_data, indent=2, ensure_ascii=False),
+                deck_summary=deck_summary
+            )
 
-        return questions
+            response = await self.openai_client.chat.completions.create(
+                model="gpt-4-turbo",
+                messages=[
+                    {"role": "system", "content": "You are a professional VC analyst."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                response_format={"type": "json_object"}
+            )
+
+            result = response.choices[0].message.content
+            try:
+                questions = json.loads(result).get("questions", [])
+            except Exception:
+                # fallback in case not JSON-formatted
+                questions = [line.strip("- ").strip() for line in result.strip().split("\n") if line]
+
+            return questions
+        except Exception as e:
+            self.logger.error(f"生成問題時發生錯誤：{str(e)}")
+            return []
 
     async def create_doc(self, deal_data, deck_data):
         # 資料前處理
