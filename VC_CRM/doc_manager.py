@@ -45,40 +45,53 @@ class DocManager:
         return str(field)
 
     def format_deck_summary(self, deck_data):
-        """將 deck_data 中的每個項目格式化為純文字段落"""
+        """將 deck_data 中的每個項目格式化為列點形式"""
         formatted = []
         for item in deck_data:
             lines = []
             if 'company' in item:
-                lines.append(f"Company: {item['company']}")
+                lines.append(f"• Company: {item['company']}")
             if 'problem' in item:
-                lines.append(f"Problem: {item['problem']}")
+                lines.append(f"• Problem: {item['problem']}")
             if 'solution' in item:
-                lines.append(f"Solution: {item['solution']}")
+                lines.append(f"• Solution: {item['solution']}")
             if 'business_model' in item:
-                lines.append(f"Business Model: {item['business_model']}")
-            formatted.append("\n".join(lines))
+                lines.append(f"• Business Model: {item['business_model']}")
+            
+            if lines:
+                formatted.append("\n".join(lines))
+        
         return "\n\n".join(formatted)
 
     def format_questions(self, questions):
-        """將問題列表格式化為純文字段落"""
+        """將問題列表格式化為數字列點形式"""
         formatted = []
-        for question in questions:
+        for i, question in enumerate(questions, 1):
             if isinstance(question, str):
-                formatted.append(question)
+                formatted.append(f"{i}. {question}")
             elif isinstance(question, dict):
                 for key, value in question.items():
-                    formatted.append(f"{key}: {value}")
+                    formatted.append(f"{i}. {key}: {value}")
         return "\n".join(formatted)
     
     async def suggest_questions_with_gpt(self, deal_data, deck_summary: str) -> list[str]:
         """根據 pitch deck 摘要，自動建議第一次接觸該新創應該問的問題"""
         try:
+            # 從 prompt manager 獲取問題列表
+            question_list1 = self.prompt_manager.get_prompt('question_list1')
+            question_list2 = self.prompt_manager.get_prompt('question_list2')
+            question_list3 = self.prompt_manager.get_prompt('question_list3')
+            question_list4 = self.prompt_manager.get_prompt('question_list4')
+
             # 使用 GoogleSheetPromptManager 獲取提示詞
             prompt = self.prompt_manager.get_prompt_and_format(
                 'suggest_questions',
-                deal_data=json.dumps(deal_data, indent=2, ensure_ascii=False),
-                deck_summary=deck_summary
+                deal_data=json.dumps(deal_data, ensure_ascii=False),
+                deck_summary=deck_summary,
+                question_list1=question_list1,
+                question_list2=question_list2,
+                question_list3=question_list3,
+                question_list4=question_list4
             )
 
             response = await self.openai_client.chat.completions.create(

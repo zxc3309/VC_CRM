@@ -262,7 +262,8 @@ class DealAnalyzer:
                 "company_introduction": full_company_summary,
                 "company_products": company_info.get('products_services', 'N/A'),
                 "company_market": company_info.get('market_position', 'N/A'),
-                "company_financials": company_info.get('financials', 'N/A')
+                "company_financials": company_info.get('financials', 'N/A'),
+                "company_milestones": company_info.get('key_milestones', 'N/A')
             }
             
             self.logger.info(f"成功提取 {company_name} 的公司信息 (綜合來源)")
@@ -275,7 +276,8 @@ class DealAnalyzer:
                 "company_introduction": "Error retrieving company details",
                 "company_products": "N/A",
                 "company_market": "N/A",
-                "company_financials": "N/A"
+                "company_financials": "N/A",
+                "company_milestones": "N/A"
             }
 
     async def _research_founder_background(self, founder_name: str, company_name: str, raw_company_info_funding_team: str) -> Dict[str, Any]:

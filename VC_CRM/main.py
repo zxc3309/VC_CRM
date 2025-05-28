@@ -44,7 +44,8 @@ class DealSourcingBot:
         try:
             message = update.message
             chat_id = message.chat_id
-            logger.info(f"Received message from user {chat_id}: {message.text[:100]}...")  # Log first 100 chars
+            text_preview = message.text[:100] if message.text else "[No text]"
+            logger.info(f"Received message from user {chat_id}: {text_preview}") # Log first 100 chars
             
                 # 處理附件
             attachments = []
@@ -156,7 +157,11 @@ async def run_bot():
     # 清除 webhook 並丟掉舊 update
     await application.bot.delete_webhook(drop_pending_updates=True)
     application.add_handler(CommandHandler("start", bot.start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
+    application.add_handler(MessageHandler(
+        (filters.TEXT | filters.Document.PDF | filters.Document.MimeType("application/vnd.openxmlformats-officedocument.presentationml.presentation")) 
+        & ~filters.COMMAND, 
+        bot.handle_message
+    ))
 
     # Start the bot
     print("Starting bot...")
