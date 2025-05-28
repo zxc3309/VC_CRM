@@ -1,7 +1,5 @@
 # Environment variables
 .env
-.env.*
-!.env.example
 
 # Python
 __pycache__/
@@ -27,7 +25,6 @@ wheels/
 
 # Virtual Environment
 venv/
-env/
 ENV/
 
 # IDE

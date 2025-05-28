@@ -10,6 +10,7 @@
   - 智能理解業務進展（Traction）
   - 分析相關網址和附件
 - 使用 OpenAI 的網路搜索功能：
+  - 提示詞可線上更動
   - 自動搜索並驗證公司信息
   - 獲取最新的公司動態 
   - 提供可信的信息來源引用
@@ -65,6 +66,7 @@ python install.py
    - 創建新的 Google Sheets
    - 創建名為 "Deals" 的工作表，並授權給你的 Service Account
    - 創建新的 Google Drive Folder，並授權給你的 Service Account
+   - 創建 "提示詞" 的工作表，並授權給你的 Service Account
    - 系統會自動創建並格式化以下欄位：
      - Timestamp
      - Company Name
