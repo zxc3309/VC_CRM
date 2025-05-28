@@ -12,7 +12,7 @@ class DealAnalyzer:
    
     def __init__(self):
         # Load environment variables from .env file
-        load_dotenv()
+        load_dotenv(override=True)
         
         # 設置 API key
         api_key = os.getenv("OPENAI_API_KEY")

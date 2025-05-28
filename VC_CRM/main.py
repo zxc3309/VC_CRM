@@ -12,7 +12,7 @@ from deck_browser import DeckBrowser
 from doc_manager import DocManager
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 #重新串回 Event Loop
 nest_asyncio.apply()

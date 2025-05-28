@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class GoogleSheetPromptManager:
     def __init__(self, spreadsheet_name: str = None, sheet_index: int = 0):
-        load_dotenv()
+        load_dotenv(override=True)
         sheet_id = spreadsheet_name or os.getenv('PROMPT_MANAGER')
         logger.info(f"使用的試算表 ID: {sheet_id}")
         

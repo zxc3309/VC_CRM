@@ -20,7 +20,7 @@ from pptx import Presentation
 from prompt_manager import GoogleSheetPromptManager
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 # Pytesseract Path
 pytesseract.pytesseract.tesseract_cmd = os.getenv('TESSERACT')
