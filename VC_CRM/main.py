@@ -141,7 +141,9 @@ class DealSourcingBot:
 async def run_bot():
     # 設定工作目錄
     
-    os.chdir(os.getenv("WORKING_DIRECTORY"))
+    working_dir = os.getenv("WORKING_DIRECTORY", "/app")
+    os.makedirs(working_dir, exist_ok=True)
+    os.chdir(working_dir)
     
     logger.info("Initializing bot...")
     bot = DealSourcingBot() # 初始化主 bot，包括 DealAnalyzer 與 SheetsManager
