@@ -1,2 +1,8 @@
 [phases.setup]
-nixPkgs = ['tesseract']
+nixPkgs = ['python311', 'tesseract']
+
+[phases.build]
+cmds = ['pip install -r requirements.txt']
+
+[start]
+cmd = 'python main.py'
