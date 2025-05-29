@@ -3,6 +3,9 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
+# 關閉 IPv6 以避免 apt 抓不到套件
+RUN echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+
 # 安裝系統相依套件（Tesseract + Chromium 依賴 + Node.js）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
