@@ -5,7 +5,7 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# 安裝系統依賴：tesseract 與瀏覽器所需的 lib
+# 安裝系統依賴：tesseract、Playwright、Node.js 必備套件
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     tesseract-ocr \
@@ -30,8 +30,15 @@ RUN apt-get update && \
     zlib1g-dev \
     curl \
     gnupg \
+    ca-certificates \
+    wget \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# ✅ 安裝 Node.js（Playwright 需要）
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g npm@latest
 
 # 設定工作目錄
 WORKDIR /app
@@ -62,5 +69,5 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # 安裝 Playwright 瀏覽器（Chromium）
 RUN playwright install --with-deps chromium
 
-# 預設啟動指令（你可以視情況改為 app.py 或 bot.py）
+# 預設啟動指令
 CMD ["python", "main.py"]
