@@ -1,8 +1,11 @@
 [phases.setup]
-nixPkgs = ['python311', 'tesseract']
+nixPkgs = ['python311', 'tesseract', 'playwright']
 
 [phases.build]
-cmds = ['pip install -r requirements.txt']
+cmds = [
+  'pip install -r requirements.txt',
+  'playwright install --with-deps'
+]
 
 [start]
 cmd = 'python main.py'
