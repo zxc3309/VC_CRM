@@ -10,9 +10,13 @@ from deal_analyzer import DealAnalyzer
 from sheets_manager import SheetsManager
 from deck_browser import DeckBrowser
 from doc_manager import DocManager
+import pytesseract
 
 # Load environment variables
 load_dotenv(override=True)
+
+#Tesseract where
+print("🔍 pytesseract default cmd:", pytesseract.pytesseract.tesseract_cmd)
 
 #重新串回 Event Loop
 nest_asyncio.apply()

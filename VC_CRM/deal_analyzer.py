@@ -67,9 +67,18 @@ class DealAnalyzer:
                 raw_company_info_funding_team = ""
 
             initial_info = await self._extract_initial_info(message_text, formatted_deck_text)
+            company_name = initial_info.get("company_name", [])
             founder_names = initial_info.get("founder_names", [])
             raw_company_info = initial_info.get("company_info", "")
             funding_info = initial_info.get("funding_info", "")
+            
+            # 嘗試從 Deck Data 覆蓋資訊（優先）
+            if isinstance(deck_data, list) and len(deck_data) > 0 and isinstance(deck_data[0], dict):
+                deck_entry = deck_data[0]
+                if deck_entry.get("company"):
+                    company_name = deck_entry["company"]
+                if deck_entry.get("funding_team"):
+                    founder_names = deck_entry["funding_team"]
             
             # 如果未找到公司名稱，返回有限的結果
             if not company_name:
