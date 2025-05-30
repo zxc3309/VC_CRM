@@ -22,15 +22,14 @@ from prompt_manager import GoogleSheetPromptManager
 
 # Load environment variables
 load_dotenv(override=True)
-print("🔍 pytesseract default cmd:", pytesseract.pytesseract.tesseract_cmd)
-print("🔍 shutil.which('tesseract'):", shutil.which("tesseract"))
+
 # Pytesseract Path
-pytesseract.pytesseract.tesseract_cmd = os.getenv('TESSERACT', '/usr/bin/tesseract')
+pytesseract.pytesseract.tesseract_cmd = os.getenv('TESSERACT', '/root/.nix-profile/bin/tesseract')
 
 # 配置日誌
 logger = logging.getLogger(__name__)
 # 5. 配置 Tesseract 路徑
-tesseract_path = os.getenv('TESSERACT', '/usr/bin/tesseract')
+tesseract_path = os.getenv('TESSERACT', '/root/.nix-profile/bin/tesseract')
 
 # 確保 logger 有 handler
 if not logger.handlers:
