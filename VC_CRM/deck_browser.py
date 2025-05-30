@@ -290,7 +290,27 @@ class DeckBrowser:
         """Initialize the browser instance asynchronously."""
         try:
             self.playwright = await async_playwright().start()
-            self.browser = await self.playwright.chromium.launch(headless=True)
+            self.browser = await self.playwright.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-gpu",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-setuid-sandbox",
+                    "--disable-extensions",
+                    "--disable-background-networking",
+                    "--disable-sync",
+                    "--metrics-recording-only",
+                    "--disable-default-apps",
+                    "--mute-audio",
+                    "--no-first-run",
+                    "--hide-scrollbars",
+                    "--ignore-certificate-errors",
+                    "--window-size=1920,1080",
+                    "--single-process",
+                    "--disable-blink-features=AutomationControlled"
+                ]
+            )
             self.logger.info("Browser initialized successfully")
         except Exception as e:
             self.logger.error(f"Failed to initialize browser: {str(e)}")
@@ -317,19 +337,27 @@ class DeckBrowser:
         return re.findall(docsend_pattern, text)
     
     async def _get_page(self, url: str) -> Page:
-        """Get a new page with configured User-Agent and other settings."""
-        page = await self.browser.new_page()
-        await page.set_viewport_size({'width': 1920, 'height': 1080})
-        await page.set_extra_http_headers({
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"macOS"'
-        })
-        
+        """使用加強防偵測設定建立新的 page"""
+        if not hasattr(self, 'context') or self.context is None:
+            self.context = await self.browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 800},
+                locale="en-US",
+                timezone_id="America/Los_Angeles",
+                permissions=["geolocation"],
+                extra_http_headers={
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                    "sec-ch-ua": '"Chromium";v="123", "Not:A-Brand";v="99", "Google Chrome";v="123"',
+                    "sec-ch-ua-mobile": "?0",
+                    "sec-ch-ua-platform": '"Windows"',
+                }
+            )
+
+        page = await self.context.new_page()
+        page.set_default_timeout(30000)  # 設定 30 秒超時，避免 hang 死
         return page
+
 
     async def read_docsend_document(self, url: str) -> Optional[str]:
         """讀取 DocSend 文檔的內容"""
