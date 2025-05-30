@@ -290,7 +290,7 @@ class DeckBrowser:
         """Initialize the browser instance asynchronously."""
         try:
             self.playwright = await async_playwright().start()
-            self.browser = await self.playwright.chromium.launch(headless=False)
+            self.browser = await self.playwright.chromium.launch(headless=True)
             self.logger.info("Browser initialized successfully")
         except Exception as e:
             self.logger.error(f"Failed to initialize browser: {str(e)}")
