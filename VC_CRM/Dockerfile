@@ -20,8 +20,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # ✅ 安裝 Playwright 瀏覽器
 RUN playwright install --with-deps
 
-# 設定 Tesseract 執行檔路徑（可選，也可在程式碼中做）
-ENV TESSERACT_CMD=/usr/bin/tesseract
+# 設定 Tesseract 執行檔路徑
+ENV TESSERACT=/usr/bin/tesseract
 
 # 預設啟動命令
 CMD ["python", "main.py"]
