@@ -15,9 +15,6 @@ import pytesseract
 # Load environment variables
 load_dotenv(override=True)
 
-#Tesseract where
-print("🔍 pytesseract default cmd:", pytesseract.pytesseract.tesseract_cmd)
-
 #重新串回 Event Loop
 nest_asyncio.apply()
 

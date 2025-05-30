@@ -11,6 +11,7 @@ from typing import Optional, List, Dict, Literal, Any
 import random
 from PIL import Image
 import pytesseract
+import shutil
 import requests
 from openai import AsyncOpenAI
 import json
@@ -21,7 +22,8 @@ from prompt_manager import GoogleSheetPromptManager
 
 # Load environment variables
 load_dotenv(override=True)
-
+print("🔍 pytesseract default cmd:", pytesseract.pytesseract.tesseract_cmd)
+print("🔍 shutil.which('tesseract'):", shutil.which("tesseract"))
 # Pytesseract Path
 pytesseract.pytesseract.tesseract_cmd = os.getenv('TESSERACT', '/usr/bin/tesseract')
 
