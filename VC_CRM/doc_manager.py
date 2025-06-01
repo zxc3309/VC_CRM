@@ -118,7 +118,7 @@ class DocManager:
 
     async def create_doc(self, deal_data, deck_data):
         # 資料前處理
-        all_founder_names = ", ".join([f["name"] for f in deal_data.get("founder_name", [])]) if deal_data.get("founder_name") else "N/A"
+        all_founder_names = ", ".join(deal_data.get("founder_name", [])) if deal_data.get("founder_name") else "N/A"
         founder_info = deal_data.get("founder_info", {})
         founder_titles = self.stringify(founder_info.get("title", "N/A"))
         founder_backgrounds = self.stringify(founder_info.get("background", "N/A"))

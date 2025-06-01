@@ -19,8 +19,8 @@ class SheetsManager:
         """Save deal information to Google Sheets."""
         service = build('sheets', 'v4', credentials=self.credentials, cache_discovery=False)
 
-        #獲取所有創辦人名字，使用逗號連接
-        all_founder_names = ", ".join([founder["name"] for founder in deal_data.get("founder_name", [])]) if deal_data.get("founder_name") else "N/A"
+        #資料前處理
+        all_founder_names = ", ".join(deal_data.get("founder_name", [])) if deal_data.get("founder_name") else "N/A"
         
         #引入founder_info並獲取各個欄位
         founder_info = deal_data.get('founder_info', {})  # 確保獲取字典

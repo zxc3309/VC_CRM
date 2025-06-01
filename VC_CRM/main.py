@@ -107,11 +107,11 @@ class DealSourcingBot:
                 raise
             
             # Format founder information for the response
-            founder_info = deal_data.get('founder_information', [])
+            founder_names = deal_data.get('founder_name', [])
             founder_text = ""
-            if founder_info:
+            if founder_names:
                 founder_text = "\nFounders:\n" + "\n".join(
-                    f"• {founder['name']}" for founder in founder_info
+                    f"• {name}" for name in founder_names
                 )
             
             # Reply with results

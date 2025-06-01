@@ -78,7 +78,13 @@ class DealAnalyzer:
                 if deck_entry.get("company"):
                     company_name = deck_entry["company"]
                 if deck_entry.get("funding_team"):
-                    founder_names = deck_entry["funding_team"]
+                    # 只提取创始人名字
+                    founder_info_str = deck_entry["funding_team"]
+                    founder_names = []
+                    for founder_str in founder_info_str.split('；'):
+                        if ':' in founder_str:
+                            name = founder_str.split(':', 1)[0].strip()
+                            founder_names.append(name)
             
             # 如果未找到公司名稱，返回有限的結果
             if not company_name:
@@ -99,19 +105,17 @@ class DealAnalyzer:
             self.logger.info(f"獲取到公司 {company_name} 的額外信息")
             
             #為每個創辦人獨立研究背景
-            all_founder_info = {}
             if founder_names:
                 # 只處理第一位創辦人（簡單解決方案）
                 first_founder = founder_names[0]
                 founder_info = await self._research_founder_background(first_founder, company_name, raw_company_info_funding_team)
-                all_founder_info = founder_info  # 使用第一位創辦人的資料
             
             # Compile the deal data
             deal_data = {
                 "company_name": company_name,
-                "founder_name": [{"name": name} for name in founder_names] if founder_names else [],
+                "founder_name": founder_names if founder_names else [],
                 "company_info": company_info,
-                "founder_info": all_founder_info,
+                "founder_info": founder_info,
                 "funding_info": funding_info
             }
             
