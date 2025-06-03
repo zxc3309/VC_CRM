@@ -11,6 +11,7 @@ from sheets_manager import SheetsManager
 from deck_browser import DeckBrowser
 from doc_manager import DocManager
 import pytesseract
+import tempfile # 導入 tempfile 模組
 
 # Load environment variables
 load_dotenv(override=True)
@@ -42,22 +43,40 @@ class DealSourcingBot:
         )
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # 使用一個列表來存儲需要清理的臨時文件路徑
+        temp_files_to_clean = []
         try:
             message = update.message
             chat_id = message.chat_id
-            text_preview = message.text[:100] if message.text else "[No text]"
+            
+            # 獲取訊息文字，優先使用 caption
+            message_text = message.caption if message.caption else message.text
+            text_preview = message_text[:100] if message_text else "[No text]"
             logger.info(f"Received message from user {chat_id}: {text_preview}") # Log first 100 chars
             
-                # 處理附件
+            # 處理附件
             attachments = []
             if message.document:
-                tg_file = await context.bot.get_file(message.document.file_id)
-                file_bytes = await tg_file.download_as_bytearray()
-                attachments.append({
-                    "name": message.document.file_name,
-                    "bytes": file_bytes,
-                    "mime_type": message.document.mime_type,
-                })
+                logger.info(f"Document received: {message.document.file_name} ({message.document.mime_type})")
+                try:
+                    tg_file = await context.bot.get_file(message.document.file_id)
+                    file_bytes = await tg_file.download_as_bytearray()
+                    
+                    # 將文件內容保存到臨時文件
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(message.document.file_name)[1]) as tmp_file:
+                        tmp_file.write(file_bytes)
+                        temp_file_path = tmp_file.name
+                        temp_files_to_clean.append(temp_file_path) # 添加到清理列表
+
+                    attachments.append({
+                        "name": message.document.file_name,
+                        "path": temp_file_path, # 添加文件路徑
+                        "mime_type": message.document.mime_type,
+                    })
+                    logger.info(f"Successfully downloaded and saved document to temporary file: {temp_file_path}")
+                except Exception as e:
+                    logger.error(f"Error downloading or saving document: {str(e)}")
+                    raise
             
             # Inform user that processing has started
             processing_msg = await message.reply_text("Processing your message...")
@@ -65,7 +84,9 @@ class DealSourcingBot:
             # Browse the provided deck
             logger.info("Starting deck browsing...")
             try:
-                deck_data = await self.deck_browser.process_input(message.text, attachments)
+                # 確保 message_text 不為 None
+                message_text = message_text if message_text else ""
+                deck_data = await self.deck_browser.process_input(message_text, attachments)
                 logger.info(f"Deck browsing complete. Data: {str(deck_data)[:100]}...")  # Log first 100 chars
             except Exception as e:
                 logger.error(f"Error in deck browsing: {str(e)}")
@@ -76,7 +97,7 @@ class DealSourcingBot:
             logger.info("Starting message analysis...")
             try:
                 # Analyze the deal with the summary
-                deal_data = await self.deal_analyzer.analyze_deal(message.text, deck_data)
+                deal_data = await self.deal_analyzer.analyze_deal(message_text, deck_data)
                 logger.info(f"Analysis complete. Deal data: {str(deal_data)[:100]}...")  # Log first 100 chars
             except Exception as e:
                 logger.error(f"Error in deal analysis: {str(e)}")
@@ -118,7 +139,7 @@ class DealSourcingBot:
             try:
                 await processing_msg.edit_text(
                     f"✅ Analysis complete!\n\n"
-                    f"Company: {deal_data['company_name']}{founder_text}\n\n"
+                    f"Company: {deal_data.get('company_name', 'N/A')}{founder_text}\n\n"
                     f"Log saved to: {doc_url}\n\n"
                     f"Details saved to: {sheet_url}"
                 )
@@ -136,7 +157,15 @@ class DealSourcingBot:
                 "Sorry, there was an error processing your message. Please try again.\n"
                 f"Error: {str(e)}"
             )
-    
+        finally:
+            # 清理臨時文件
+            for temp_file in temp_files_to_clean:
+                try:
+                    os.remove(temp_file)
+                    logger.info(f"Cleaned up temporary file: {temp_file}")
+                except OSError as e:
+                    logger.error(f"Error removing temporary file {temp_file}: {e}")
+
     
     #實際執行主程式
 async def run_bot():
@@ -160,9 +189,10 @@ async def run_bot():
     # 清除 webhook 並丟掉舊 update
     await application.bot.delete_webhook(drop_pending_updates=True)
     application.add_handler(CommandHandler("start", bot.start))
+    
+    # 更新消息處理器以接受更多文件類型
     application.add_handler(MessageHandler(
-        (filters.TEXT | filters.Document.PDF | filters.Document.MimeType("application/vnd.openxmlformats-officedocument.presentationml.presentation")) 
-        & ~filters.COMMAND, 
+        (filters.TEXT | filters.Document.ALL) & ~filters.COMMAND,
         bot.handle_message
     ))
 
