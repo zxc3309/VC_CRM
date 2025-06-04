@@ -34,6 +34,9 @@ class DealAnalyzer:
             self.logger.error("OPENAI_API_KEY environment variable is not set.")
             raise ValueError("API key is not set. Please set the OPENAI_API_KEY environment variable.")
         
+        # 初始化 prompt_manager
+        self.prompt_manager = GoogleSheetPromptManager()
+        
         # 設置搜索模型
         self.search_model = "gpt-4.1"  # 使用 gpt-4.1 模型
         

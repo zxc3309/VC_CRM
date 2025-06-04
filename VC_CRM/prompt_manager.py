@@ -26,17 +26,17 @@ class GoogleSheetPromptManager:
             client = gspread.authorize(creds)
             
             # 找到目標試算表
-            target_sheet = None
+            self.target_sheet = None
             for sheet in client.openall():
                 if sheet.id == sheet_id:
-                    target_sheet = sheet
+                    self.target_sheet = sheet
                     break
             
-            if not target_sheet:
+            if not self.target_sheet:
                 raise ValueError(f"找不到 ID 為 {sheet_id} 的試算表")
             
             # 使用第一個工作表
-            sheet = target_sheet.worksheets()[0]
+            sheet = self.target_sheet.worksheets()[0]
             records = sheet.get_all_records()
             
             # 清理提示詞中的換行符號
@@ -90,3 +90,20 @@ class GoogleSheetPromptManager:
         except Exception as e:
             logger.error(f"❌ 格式化失敗: {e}")
             raise
+        
+    def reload_prompts(self):
+        """手動重新載入 Google Sheet 中的 prompt"""
+        try:
+            sheet = self.target_sheet.worksheets()[0]
+            records = sheet.get_all_records()
+
+            self.prompts = {}
+            for row in records:
+                prompt_id = row['prompt_id']
+                prompt_text = row['prompt_text']
+                prompt_text = prompt_text.replace('\r\n', ' ').replace('\n', ' ').strip()
+                self.prompts[prompt_id] = prompt_text
+
+            logger.info(f"🔄 成功重新載入 {len(self.prompts)} 個提示詞")
+        except Exception as e:
+            logger.error(f"❌ 重新載入提示詞失敗: {str(e)}")

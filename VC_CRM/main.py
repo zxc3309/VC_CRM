@@ -10,7 +10,7 @@ from deal_analyzer import DealAnalyzer
 from sheets_manager import SheetsManager
 from deck_browser import DeckBrowser
 from doc_manager import DocManager
-import pytesseract
+from prompt_manager import GoogleSheetPromptManager
 import tempfile # 導入 tempfile 模組
 
 # Load environment variables
@@ -34,6 +34,7 @@ class DealSourcingBot:
         self.doc_manager = DocManager()
         self.sheets_manager = SheetsManager()
         logger.debug("Initialization complete")
+        self.prompt_manager = GoogleSheetPromptManager()
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Start command received from user {update.effective_user.id}")
@@ -41,6 +42,23 @@ class DealSourcingBot:
             'Welcome to VC Deal Sourcing Bot! Send me information about potential deals, '
             'and I will analyze and organize them for you.'
         )
+
+    async def reload_prompt_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            # 直接調用儲存的 prompt_manager 實例的 reload_prompts 方法
+            self.prompt_manager.reload_prompts()
+            await update.message.reply_text("🔄 Prompt 已重新載入成功！")
+        except Exception as e:
+            await update.message.reply_text(f"❌ 重新載入失敗：{str(e)}")
+            
+    async def show_prompt_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        prompt_id = context.args[0] if context.args else "question_list1"
+        prompt = self.prompt_manager.get_prompt(prompt_id)
+        await update.message.reply_text(prompt or f"找不到 prompt: {prompt_id}")
+
+    def register_handlers(self, application):
+        application.add_handler(CommandHandler("reload_prompt", self.reload_prompt_command))
+        application.add_handler(CommandHandler("show_prompt", self.show_prompt_command))
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 使用一個列表來存儲需要清理的臨時文件路徑
@@ -181,6 +199,9 @@ async def run_bot():
     # Create application
     application = Application.builder().token(os.getenv('TELEGRAM_BOT_TOKEN')).build()
     
+    # 註冊 handlers
+    bot.register_handlers(application)
+
     # 錯誤處理（避免崩潰）
     async def error_handler(update: Update, context):
         logger.error(f"❌ Bot error: {context.error}")
