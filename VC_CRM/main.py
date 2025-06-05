@@ -125,9 +125,8 @@ class DealSourcingBot:
             #Save to Google Doc
             logger.info("Saving to Google Doc...")
             try:
-                result = await self.doc_manager.create_doc(deal_data, deck_data)
+                result = await self.doc_manager.create_doc(deal_data)
                 doc_url = result["doc_url"]
-                summary_text = result["deck_summary_str"]  # ← 這就是你要傳給其他 .py 的文字
                 logger.info(f"Data saved to Google Doc successfully. URL: {doc_url}")
                 
             except Exception as e:
@@ -138,7 +137,7 @@ class DealSourcingBot:
             # Save to Google Sheets
             logger.info("Saving to Google Sheets...")
             try:
-                sheet_url = await self.sheets_manager.save_deal(deal_data, doc_url, summary_text)
+                sheet_url = await self.sheets_manager.save_deal(deal_data, doc_url)
                 logger.info(f"Data saved to sheets successfully. URL: {sheet_url}")
             except Exception as e:
                 logger.error(f"Error saving to sheets: {str(e)}")

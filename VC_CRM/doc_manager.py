@@ -44,25 +44,6 @@ class DocManager:
             return ", ".join(processed)
         return str(field)
 
-    def format_deck_summary(self, deck_data):
-        """將 deck_data 中的每個項目格式化為列點形式"""
-        formatted = []
-        for item in deck_data:
-            lines = []
-            if 'company' in item:
-                lines.append(f"• Company: {item['company']}")
-            if 'problem' in item:
-                lines.append(f"• Problem: {item['problem']}")
-            if 'solution' in item:
-                lines.append(f"• Solution: {item['solution']}")
-            if 'business_model' in item:
-                lines.append(f"• Business Model: {item['business_model']}")
-            
-            if lines:
-                formatted.append("\n".join(lines))
-        
-        return "\n\n".join(formatted)
-
     def format_questions(self, questions):
         """將問題列表格式化為數字列點形式"""
         formatted = []
@@ -74,7 +55,7 @@ class DocManager:
                     formatted.append(f"{i}. {key}: {value}")
         return "\n".join(formatted)
     
-    async def suggest_questions_with_gpt(self, deal_data, deck_summary: str) -> list[str]:
+    async def suggest_questions_with_gpt(self, deal_data) -> list[str]:
         """根據 pitch deck 摘要，自動建議第一次接觸該新創應該問的問題"""
         try:
             # 從 prompt manager 獲取問題列表
@@ -87,7 +68,6 @@ class DocManager:
             prompt = self.prompt_manager.get_prompt_and_format(
                 'suggest_questions',
                 deal_data=json.dumps(deal_data, ensure_ascii=False),
-                deck_summary=deck_summary,
                 question_list1=question_list1,
                 question_list2=question_list2,
                 question_list3=question_list3,
@@ -116,7 +96,7 @@ class DocManager:
             self.logger.error(f"生成問題時發生錯誤：{str(e)}")
             return []
 
-    async def create_doc(self, deal_data, deck_data):
+    async def create_doc(self, deal_data):
         # 資料前處理
         all_founder_names = ", ".join(deal_data.get("founder_name", [])) if deal_data.get("founder_name") else "N/A"
         founder_info = deal_data.get("founder_info", {})
@@ -128,8 +108,9 @@ class DocManager:
         company_name = self.stringify(deal_data.get("company_name", "N/A"))
         company_info = self.stringify(deal_data.get("company_info", {}).get("company_introduction", "N/A"))
         funding_info = self.stringify(deal_data.get("funding_info", "N/A"))
-        deck_summary_str = self.format_deck_summary(deck_data)
-        suggested_questions = self.format_questions(await self.suggest_questions_with_gpt(deal_data, deck_summary_str))
+        suggested_questions = self.format_questions(await self.suggest_questions_with_gpt(deal_data))
+        # 獲取 deck_link，如果是 N/A 則不創建超連結
+        deck_link = deal_data.get("Deck Link", "N/A")
 
         doc_title = f"{company_name} Log"
 
@@ -150,15 +131,15 @@ class DocManager:
             ("Analysis Date：", datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
             ("Company Name：", company_name),
             ("Brief Introduction", company_info),
-            ("Funding Information：", funding_info),
+            ("Funding Information", funding_info),
             ("Founder Name", all_founder_names),
             ("Founder Title", founder_titles),
             ("Founder Background", founder_backgrounds),
             ("Founder Experience", founder_companies),
             ("Founder Education", founder_education),
             ("Founder Achievements", founder_achievements),
-            ("Deck Summary", deck_summary_str),
-            ("Suggested Questions", suggested_questions)
+            ("Suggested Questions", suggested_questions),
+            ("Deck Link：", deck_link)
         ]
 
         # 插入請求集合
@@ -222,5 +203,4 @@ class DocManager:
 
         return {
             "doc_url": f"https://docs.google.com/document/d/{document_id}",
-            "deck_summary_str": deck_summary_str
         }

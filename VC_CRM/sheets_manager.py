@@ -15,7 +15,7 @@ class SheetsManager:
             scopes=self.SCOPES
         )
     
-    async def save_deal(self, deal_data, doc_url, summary_text):
+    async def save_deal(self, deal_data, doc_url):
         """Save deal information to Google Sheets."""
         service = build('sheets', 'v4', credentials=self.credentials, cache_discovery=False)
 
@@ -85,9 +85,11 @@ class SheetsManager:
         company_name_str = stringify(company_name)
         company_info_str = stringify(company_info)
         funding_info_str = stringify(deal_data.get('funding_info', 'N/A'))
-        # ---- 修改完成 ----
-        deck_summary_str = stringify(summary_text)
-        
+
+        # 獲取 deck_link，如果是 N/A 則不創建超連結
+        deck_link_raw = deal_data.get("Deck Link", "N/A")
+        doc_link = f'=HYPERLINK("{doc_url}", "Doc")' if doc_url else "N/A"
+        deck_link = f'=HYPERLINK("{deck_link_raw}", "Deck")' if deck_link_raw != "N/A" else "N/A"
         
         # Prepare row data
         row_data = [
@@ -102,8 +104,8 @@ class SheetsManager:
             founder_education,
             founder_achievements,
             founder_linkedin,
-            deck_summary_str, # deck_summary 已經是 JSON 字串
-            f'=HYPERLINK("{doc_url}", "Open")'  # 正確地插入變數值
+            doc_link,
+            deck_link
         ]
 
         # Check and update headers if needed
@@ -119,8 +121,8 @@ class SheetsManager:
             'Education',
             'Achievements',
             'Founder\'s LinkedIn',
-            'Deck Summary',
-            'Log Link'
+            'Log Link',
+            'Deck Link'
         ]
         
         # Get the first row to check headers

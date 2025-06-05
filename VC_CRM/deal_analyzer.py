@@ -1,11 +1,12 @@
 import os
 import json
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from prompt_manager import GoogleSheetPromptManager
 import traceback
+import re
 
     
 class DealAnalyzer:
@@ -43,13 +44,33 @@ class DealAnalyzer:
         # 初始化 prompt_manager
         self.prompt_manager = GoogleSheetPromptManager()
 
-    async def analyze_deal(self, message_text: str, deck_data) -> Dict[str, Any]:
+    def extract_deck_link(self, message: str) -> Optional[str]:
+        """從消息中提取文檔連結"""
+        if not message:
+            return None
+            
+        # 使用正則表達式匹配各種可能的文檔連結
+        docsend_pattern = r'https://docsend\.com/view/[a-zA-Z0-9]+'
+        gdrive_pattern = r'https://(?:drive|docs)\.google\.com/(?:file/d/|presentation/)[\w\-/]+'
+        notion_pattern = r'https://(?:www\.)?notion\.so/[a-zA-Z0-9\-]+'
+        
+        # 按優先順序檢查各種連結
+        if re.search(docsend_pattern, message):
+            return re.search(docsend_pattern, message).group(0)
+        elif re.search(gdrive_pattern, message):
+            return re.search(gdrive_pattern, message).group(0)
+        elif re.search(notion_pattern, message):
+            return re.search(notion_pattern, message).group(0)
+        
+        return None
+
+    async def analyze_deal(self, message_text: str, deck_data: str) -> Dict[str, Any]:
         """
         Analyze the deal based on the provided message text.
         
         Parameters:
         message_text: The text containing deal information
-        deck_data: Data extracted from the pitch deck
+        deck_data: OCR text extracted from the pitch deck
         
         Returns:
         A dictionary containing analyzed deal data
@@ -57,37 +78,16 @@ class DealAnalyzer:
         try:
             self.logger.info("Analyzing deal information...")
 
-            # 轉換Deck內容為可供GenAI閱讀的形式
-            formatted_deck_text = self.format_deck_summary(deck_data)
-
-            # 從 deck_data 中獲取公司名稱
+            # 從 OCR 文本中提取公司名稱
             company_name = ""
-            if isinstance(deck_data, list) and len(deck_data) > 0 and isinstance(deck_data[0], dict):
-                company_name = deck_data[0].get("company", "")
-                raw_company_info_funding_team = deck_data[0].get("funding_team", "")
-            else:
-                self.logger.error("deck_data is not a list of dict or empty.")
-                raw_company_info_funding_team = ""
-
-            initial_info = await self._extract_initial_info(message_text, formatted_deck_text)
-            company_name = initial_info.get("company_name", [])
-            founder_names = initial_info.get("founder_names", [])
-            raw_company_info = initial_info.get("company_info", "")
-            funding_info = initial_info.get("funding_info", "")
+            founder_names = []
+            funding_info = ""
             
-            # 嘗試從 Deck Data 覆蓋資訊（優先）
-            if isinstance(deck_data, list) and len(deck_data) > 0 and isinstance(deck_data[0], dict):
-                deck_entry = deck_data[0]
-                if deck_entry.get("company"):
-                    company_name = deck_entry["company"]
-                if deck_entry.get("funding_team"):
-                    # 只提取创始人名字
-                    founder_info_str = deck_entry["funding_team"]
-                    founder_names = []
-                    for founder_str in founder_info_str.split('；'):
-                        if ':' in founder_str:
-                            name = founder_str.split(':', 1)[0].strip()
-                            founder_names.append(name)
+            # 使用 AI 從 OCR 文本中提取初始信息
+            initial_info = await self._extract_initial_info(message_text, deck_data)
+            company_name = initial_info.get("company_name", "")
+            founder_names = initial_info.get("founder_names", [])
+            funding_info = initial_info.get("funding_info", "")
             
             # 如果未找到公司名稱，返回有限的結果
             if not company_name:
@@ -98,20 +98,23 @@ class DealAnalyzer:
             
             # Search for additional founder names if not found
             if not founder_names:
-                founder_info = await self._search_founder_names(company_name, raw_company_info_funding_team)
+                founder_info = await self._search_founder_names(company_name, deck_data)
                 founder_names = founder_info.get("founder_names", [])
             
             self.logger.info(f"找到創辦人名稱: {founder_names}")
             
             #尋找更多公司信息
-            company_info = await self._get_company_details(company_name, founder_names, message_text, formatted_deck_text)
+            company_info = await self._get_company_details(company_name, founder_names, message_text, deck_data)
             self.logger.info(f"獲取到公司 {company_name} 的額外信息")
             
             #為每個創辦人獨立研究背景
             if founder_names:
                 # 只處理第一位創辦人（簡單解決方案）
                 first_founder = founder_names[0]
-                founder_info = await self._research_founder_background(first_founder, company_name, raw_company_info_funding_team)
+                founder_info = await self._research_founder_background(first_founder, company_name, deck_data)
+            
+            # 提取文檔連結
+            deck_link = self.extract_deck_link(message_text)
             
             # Compile the deal data
             deal_data = {
@@ -122,28 +125,24 @@ class DealAnalyzer:
                 "funding_info": funding_info
             }
             
+            # 如果有找到連結，添加到結果中
+            if deck_link:
+                deal_data["Deck Link"] = deck_link
+            
             self.logger.info("Deal analysis complete.")
             return deal_data
             
         except Exception as e:
             self.logger.error(f"Error analyzing deal: {str(e)}", exc_info=True)
             return {}
-        #到此主程序完成
 
-    def format_deck_summary(self, deck_data: list[dict]) -> str:
-        if not deck_data or not isinstance(deck_data[0], dict):
-            return ''
-        
-        deck_dict = deck_data[0]
-        return '\n'.join(f"[{key.capitalize()}] {value}" for key, value in deck_dict.items())
-
-    async def _extract_initial_info(self, message_text: str, formatted_deck_text: str) -> Dict[str, Any]:
-        """從消息和 Deck 摘要中提取初始信息"""
+    async def _extract_initial_info(self, message_text: str, deck_data: str) -> Dict[str, Any]:
+        """從消息和 OCR 文本中提取初始信息"""
         try:
             prompt = self.prompt_manager.get_prompt_and_format(
                 'extract_initial_info',
                 message_text=message_text,
-                formatted_deck_text=formatted_deck_text
+                deck_data=deck_data
             )
             
             response = await self._get_completion(prompt)
@@ -153,17 +152,18 @@ class DealAnalyzer:
             self.logger.error(traceback.format_exc())
             return {
                 "company_name": "",
-                "founder_names": "",
+                "founder_names": [],
                 "company_info": "",
                 "funding_info": ""
             }
 
-    async def _search_founder_names(self, company_name: str, raw_company_info_funding_team: str) -> Dict[str, Any]:
+    async def _search_founder_names(self, company_name: str, deck_data: str) -> Dict[str, Any]:
         """
         如果初始文本中沒有創始人信息，使用網絡搜索查找
         
         參數:
         company_name: 公司名稱
+        deck_data: OCR 文本內容
         
         返回:
         包含創始人名稱和職稱的字典
@@ -171,10 +171,12 @@ class DealAnalyzer:
         try:
             self.logger.info(f"搜索 {company_name} 的創始人")
             
-            # 使用不同的搜索查詢
+            # 使用 prompt_manager 獲取搜索查詢
             search_queries = [
-                f"{company_name} founder CEO title position who founded",
-                f"{company_name} 創始人 CEO 職位 誰創立了"
+                self.prompt_manager.get_prompt_and_format(
+                    'search_founder_names',
+                    company_name=company_name
+                ),
             ]
             
             found_info = {
@@ -193,7 +195,7 @@ class DealAnalyzer:
                     'search_founder_names',
                     company_name=company_name,
                     search_content=search_results.get('content', ''),
-                    raw_company_info_funding_team=raw_company_info_funding_team
+                    deck_data=deck_data
                 )
                 
                 completion = await self.openai_client.chat.completions.create(
@@ -224,19 +226,25 @@ class DealAnalyzer:
             self.logger.error(f"搜索創始人時出錯: {str(e)}", exc_info=True)
             return {'founder_names': [], 'founder_titles': []}
 
-    async def _get_company_details(self, company_name: str, founder_names: list, message_text: str, formatted_deck_text: str) -> Dict[str, Any]:
+    async def _get_company_details(self, company_name: str, founder_names: list, message_text: str, deck_data: str) -> Dict[str, Any]:
         """獲取公司的詳細信息（綜合來源）"""
         try:
+            # 使用 prompt_manager 獲取搜索查詢
+            search_query = self.prompt_manager.get_prompt_and_format(
+                'get_company_search_query',
+                company_name=company_name
+            )
+            
             # 執行網絡搜索
-            search_query = f"{company_name} company information business model products services market position"
             search_results = await self._web_search(search_query)
             search_content = search_results.get('content', '') if search_results else ''
 
             prompt = self.prompt_manager.get_prompt_and_format(
                 'get_company_details',
                 company_name=company_name,
+                founder_names=founder_names,
                 message_text=message_text,
-                formatted_deck_text=formatted_deck_text,
+                deck_data=deck_data,
                 search_content=search_content
             )
             
@@ -254,31 +262,29 @@ class DealAnalyzer:
             self.logger.info(f"Raw completion response (_get_company_details): {completion.choices[0].message.content}")
 
             # 返回結構化信息
-            full_company_summary = f"""
-【Introduction】
-{company_info.get('company_introduction', 'N/A')}
+            full_company_summary = f"""【One Liner】
+{company_info.get('company_introduction_one_liner', 'N/A')}
 
-【Business Model】
-{company_info.get('business_model', 'N/A')}
+【Pain Point】
+{company_info.get('painpoint', 'N/A')}
 
-【Product & Services】
-{company_info.get('products_services', 'N/A')}
+【Solution】
+{company_info.get('solution', 'N/A')}
 
 【Market Position】
 {company_info.get('market_position', 'N/A')}
 
-【Financials】
-{company_info.get('financials', 'N/A')}
+【Traction】
+{company_info.get('traction', 'N/A')}
 
-【Milestones】
-{company_info.get('key_milestones', 'N/A')}
-            """.strip()
+【Key Milestones】
+{company_info.get('key_milestones', 'N/A')}""".strip()
 
             result = {
                 "company_introduction": full_company_summary,
-                "company_products": company_info.get('products_services', 'N/A'),
+                "company_products": company_info.get('solution', 'N/A'),  # 使用 solution 作為產品信息
                 "company_market": company_info.get('market_position', 'N/A'),
-                "company_financials": company_info.get('financials', 'N/A'),
+                "company_traction": company_info.get('traction', 'N/A'),  # 使用 traction 作為財務信息
                 "company_milestones": company_info.get('key_milestones', 'N/A')
             }
             
@@ -292,17 +298,18 @@ class DealAnalyzer:
                 "company_introduction": "Error retrieving company details",
                 "company_products": "N/A",
                 "company_market": "N/A",
-                "company_financials": "N/A",
+                "company_traction": "N/A",
                 "company_milestones": "N/A"
             }
 
-    async def _research_founder_background(self, founder_name: str, company_name: str, raw_company_info_funding_team: str) -> Dict[str, Any]:
+    async def _research_founder_background(self, founder_name: str, company_name: str, deck_data: str) -> Dict[str, Any]:
         """
         研究創始人的詳細背景
         
         參數:
         founder_name: 創始人名稱
         company_name: 公司名稱
+        deck_data: OCR 文本內容
         
         返回:
         包含創始人背景信息的內容
@@ -310,8 +317,12 @@ class DealAnalyzer:
         try:
             self.logger.info(f"研究 {founder_name} 的背景")
             
-            # 構建搜索查詢
-            search_query = f"{founder_name} {company_name} founder biography, career history, education background, achievements awards, LinkedIn URL"
+            # 使用 prompt_manager 獲取搜索查詢
+            search_query = self.prompt_manager.get_prompt_and_format(
+                'research_founder_background_query',
+                founder_name=founder_name,
+                company_name=company_name
+            )
             
             # 搜索創始人背景
             search_results = await self._web_search(search_query)
@@ -332,7 +343,7 @@ class DealAnalyzer:
                 'research_founder_background',
                 founder_name=founder_name,
                 search_content=search_results.get('content', ''),
-                raw_company_info_funding_team=raw_company_info_funding_team
+                deck_data=deck_data
             )
             
             completion = await self.openai_client.chat.completions.create(

@@ -1580,68 +1580,15 @@ async def extract_company_name_from_message(message: str) -> Optional[str]:
         return None
 
 async def summarize_pitch_deck(ocr_text: str, message: str = "") -> Dict:
-    """用 GPT 摘要 Pitch Deck OCR 文字為結構化大綱並回傳 dict"""
+    """直接返回 OCR 文字結果"""
     # 確保輸入文字是 UTF-8 編碼
     if isinstance(ocr_text, str):
         ocr_text = ocr_text.encode('utf-8', errors='ignore').decode('utf-8')
 
-    # 首先嘗試從消息中提取公司名稱
-    company_name = None
-    if message:
-        company_name = await extract_company_name_from_message(message)
-        if company_name:
-            logger.info(f"從消息中提取到公司名稱: {company_name}")
-
-    # 如果沒有從消息中找到公司名稱，嘗試從 Deck 內容中提取
-    if not company_name:
-        # 使用 GPT 從 Deck 內容中提取公司名稱
-        try:
-            completion = await openai_client.chat.completions.create(
-                model="gpt-4.1",
-                messages=[
-                    {"role": "system", "content": "You are a professional analyst helping investors extract company names from pitch decks."},
-                    {"role": "user", "content": f"Please extract the company name from this pitch deck content. If you find multiple possible names, choose the most likely one. Return only the company name, nothing else.\n\nContent:\n{ocr_text[:2000]}"}  # 只使用前2000個字符來提取公司名稱
-                ]
-            )
-            extracted_name = completion.choices[0].message.content.strip()
-            if extracted_name and len(extracted_name) < 50:  # 確保提取的名稱合理
-                company_name = extracted_name
-                logger.info(f"從 Deck 內容中提取到公司名稱: {company_name}")
-        except Exception as e:
-            logger.warning(f"從 Deck 內容提取公司名稱失敗: {str(e)}")
-
-    # 使用 GoogleSheetPromptManager 獲取提示詞
-    prompt = prompt_manager.get_prompt_and_format(
-        'summarize_pitch_deck',
-        company_name=company_name if company_name else 'Unknown Company',
-        ocr_text=ocr_text,  # 添加 ocr_text 參數
-    )
-
-    try:
-        completion = await openai_client.chat.completions.create(
-            model="gpt-4.1",
-            messages=[
-                {"role": "system", "content": "You are a professional analyst helping investors organize Pitch Deck information."},
-                {"role": "user", "content": prompt}
-            ],
-            response_format={"type": "json_object"}
-        )
-        raw_output = json.loads(completion.choices[0].message.content)
-        
-        # 如果從消息或 Deck 中提取到了公司名稱，確保使用這個名稱
-        if company_name:
-            raw_output["company"] = company_name
-            
-        logger.info(f"成功提取Deck信息")       
-        return raw_output
-    except Exception as e:
-        logger.error(f"GPT 處理失敗：{str(e)}")
-        return {
-            "error": f"分析失敗: {str(e)}",
-            "company": company_name if company_name else "未知公司",
-            "summary": "分析失敗"
-        }
-    
+    # 直接返回 OCR 結果
+    return {
+        "raw_content": ocr_text,
+    }
 
 async def debug_all_iframes(page):
     """
@@ -1692,38 +1639,11 @@ if __name__ == "__main__":
 
     async def main():
         message = """
-        # ***CHOMP***
-
-        **CHOMP's current flagship front end feels like a quiz game.** Under the hood, it's a new kind of information market primitive we call *vibe markets*.
-
-        Users bet on what they believe and what they think others believe, and CHOMP generates the best answers that reveals what the crowd *really* thinks. The data these markets create powers a new form of more trustworthy content, one created via manipulation-resistance and honest participation; properties guaranteed by the market design.
-
-        Builders are already using CHOMP's market primitive as an oracle to resolve their own markets. As it scales, CHOMP becomes the engine for coordinating humans, businesses, and agents to produce trustworthy opinionated information that reveals hidden beliefs—powering a more trustworthy internet.
-
-        The current front end has seen:
-
-        - 40K+ all-time users
-        - 1.6M+ total bets made
-        - 72% Average MoM Growth in Q1 2025
-
-        Built by a team with deep expertise across **Web2, Web3, and high-frequency markets**. Ex-Orca, IDEO, Mediacom, Deloitte, and more.
-
-        CHOMP won the Colosseum Hackathon and Bonkathon. The first third-party product built on top of CHOMP launches this June.
-
-        ## Start here
-
-        ---
-
-        [Why CHOMP? ](https://www.notion.so/Why-CHOMP-1bbdfb1cb436811db3a0fbd9c1010c1d?pvs=21)
-
-        [Why us? ](https://www.notion.so/Why-us-1acdfb1cb4368007b9d5d78c5be28a9a?pvs=21)
-
-        [Fundraising Details](https://www.notion.so/Fundraising-Details-1addfb1cb43680da916cde9c2bc05578?pvs=21)
-
-        [Metrics To Date](https://www.notion.so/Metrics-To-Date-fffdfb1cb43681ecb692e6d4c37105b6?pvs=21)
-
-        [Revenue Model](https://www.notion.so/Revenue-Model-1cadfb1cb43680d4bccdda7fdad45668?pvs=21)
-
+    Normie Tech lets your customers pay you in stablecoins without an onramp
+    Before this I managed a million dollar grant program for Vitalik and saw the number 1 issue repeatedly holding back web3: sending customers to exchanges where >3/4 give up. We built a solution for our own platform and other projects asked to hire us to do the same.
+    Profitable from set up fees by month 4, raising a pre-seed to move faster.
+    Here is the deck:
+    https://docsend.com/view/sikphsrjbwpz8h82
 
         """
         
