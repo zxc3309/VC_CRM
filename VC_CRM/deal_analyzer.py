@@ -38,11 +38,13 @@ class DealAnalyzer:
         # 初始化 prompt_manager
         self.prompt_manager = GoogleSheetPromptManager()
         
-        # 設置搜索模型
-        self.search_model = "gpt-4.1"  # 使用 gpt-4.1 模型
+        # 從 prompt manager 獲取 AI model 設置
+        self.ai_model = self.prompt_manager.get_prompt('ai_model') or "gpt-4.1"  # 如果沒有設置，默認使用 gpt-4.1
+        self.logger.info(f"Using AI model: {self.ai_model}")
         
-        # 初始化 prompt_manager
-        self.prompt_manager = GoogleSheetPromptManager()
+        # 設置搜索模型
+        self.search_model = self.prompt_manager.get_prompt('search_model') or "gpt-4.1"  # 如果沒有設置，默認使用 gpt-4.1
+        self.logger.info(f"Using search model: {self.search_model}")
 
     def extract_deck_link(self, message: str) -> Optional[str]:
         """從消息中提取文檔連結"""
@@ -145,7 +147,16 @@ class DealAnalyzer:
                 deck_data=deck_data
             )
             
-            response = await self._get_completion(prompt)
+            completion = await self.openai_client.chat.completions.create(
+                model=self.ai_model,
+                messages=[
+                    {"role": "system", "content": "你是一個專門分析公司信息的 AI 分析師。"},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            
+            response = json.loads(completion.choices[0].message.content)
             return response
         except Exception as e:
             self.logger.error(f"提取初始信息時出錯: {str(e)}")
@@ -158,16 +169,6 @@ class DealAnalyzer:
             }
 
     async def _search_founder_names(self, company_name: str, deck_data: str) -> Dict[str, Any]:
-        """
-        如果初始文本中沒有創始人信息，使用網絡搜索查找
-        
-        參數:
-        company_name: 公司名稱
-        deck_data: OCR 文本內容
-        
-        返回:
-        包含創始人名稱和職稱的字典
-        """
         try:
             self.logger.info(f"搜索 {company_name} 的創始人")
             
@@ -199,7 +200,7 @@ class DealAnalyzer:
                 )
                 
                 completion = await self.openai_client.chat.completions.create(
-                    model="gpt-4.1",
+                    model=self.ai_model,
                     messages=[
                         {"role": "system", "content": "你是一個專門提取創始人信息的 AI 分析師。"},
                         {"role": "user", "content": prompt}
@@ -227,7 +228,6 @@ class DealAnalyzer:
             return {'founder_names': [], 'founder_titles': []}
 
     async def _get_company_details(self, company_name: str, founder_names: list, message_text: str, deck_data: str) -> Dict[str, Any]:
-        """獲取公司的詳細信息（綜合來源）"""
         try:
             # 使用 prompt_manager 獲取搜索查詢
             search_query = self.prompt_manager.get_prompt_and_format(
@@ -249,7 +249,7 @@ class DealAnalyzer:
             )
             
             completion = await self.openai_client.chat.completions.create(
-                model="gpt-4.1",
+                model=self.ai_model,
                 messages=[
                     {"role": "system", "content": "你是一個專門分析公司信息的 AI 分析師，需要綜合多個來源的信息。"},
                     {"role": "user", "content": prompt}
@@ -303,17 +303,6 @@ class DealAnalyzer:
             }
 
     async def _research_founder_background(self, founder_name: str, company_name: str, deck_data: str) -> Dict[str, Any]:
-        """
-        研究創始人的詳細背景
-        
-        參數:
-        founder_name: 創始人名稱
-        company_name: 公司名稱
-        deck_data: OCR 文本內容
-        
-        返回:
-        包含創始人背景信息的內容
-        """
         try:
             self.logger.info(f"研究 {founder_name} 的背景")
             
@@ -347,7 +336,7 @@ class DealAnalyzer:
             )
             
             completion = await self.openai_client.chat.completions.create(
-                model="gpt-4.1",
+                model=self.ai_model,
                 messages=[
                     {"role": "system", "content": "你是一個專門提取專業背景信息的 AI 分析師。"},
                     {"role": "user", "content": prompt}
@@ -447,7 +436,7 @@ class DealAnalyzer:
         """使用 OpenAI API 獲取完成結果"""
         try:
             completion = await self.openai_client.chat.completions.create(
-                model="gpt-4.1",
+                model=self.ai_model,
                 messages=[
                     {"role": "system", "content": "你是一個專門分析公司信息的 AI 分析師。"},
                     {"role": "user", "content": prompt}
