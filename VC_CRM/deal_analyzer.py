@@ -282,6 +282,7 @@ class DealAnalyzer:
 
             result = {
                 "company_introduction": full_company_summary,
+                "company_one_liner": company_info.get('company_introduction_one_liner', 'N/A'),
                 "company_products": company_info.get('solution', 'N/A'),  # 使用 solution 作為產品信息
                 "company_market": company_info.get('market_position', 'N/A'),
                 "company_traction": company_info.get('traction', 'N/A'),  # 使用 traction 作為財務信息
@@ -296,6 +297,7 @@ class DealAnalyzer:
             self.logger.error(traceback.format_exc())
             return {
                 "company_introduction": "Error retrieving company details",
+                "company_one_liner": "N/A",
                 "company_products": "N/A",
                 "company_market": "N/A",
                 "company_traction": "N/A",
