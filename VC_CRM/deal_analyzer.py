@@ -22,6 +22,28 @@ class DealAnalyzer:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
         
+        # 初始化 input_data 字典
+        self.input_data = {
+            "Web Prompt1": "",
+            "Web Content1": "",
+            "Web Prompt2": "",
+            "Web Content2": "",
+            "Web Prompt3": "",
+            "Web Content3": "",
+            "AI Prompt1": "",
+            "AI Content1": "",
+            "AI Prompt2": "",
+            "AI Content2": "",
+            "AI Prompt3": "",
+            "AI Content3": "",
+            "AI Prompt4": "",
+            "AI Content4": "",
+            "AI Prompt5": "",
+            "AI Content5": "",
+            "deck_data": "",
+            "message_text": ""
+        }
+        
         # 初始化 OpenAI 客戶端
         if api_key:
             # 只記錄 API key 是否存在，不記錄實際內容
@@ -75,10 +97,14 @@ class DealAnalyzer:
         deck_data: OCR text extracted from the pitch deck
         
         Returns:
-        A dictionary containing analyzed deal data
+        A dictionary containing analyzed deal data and input data
         """
         try:
             self.logger.info("Analyzing deal information...")
+            
+            # 更新 input_data
+            self.input_data["message_text"] = message_text
+            self.input_data["deck_data"] = deck_data
 
             # 從 OCR 文本中提取公司名稱
             company_name = ""
@@ -94,7 +120,10 @@ class DealAnalyzer:
             # 如果未找到公司名稱，返回有限的結果
             if not company_name:
                 self.logger.warning("未找到公司名稱，分析終止")
-                return {}
+                return {
+                    "deal_data": {},
+                    "input_data": self.input_data
+                }
             
             self.logger.info(f"找到公司名稱: {company_name}")
             
@@ -132,11 +161,17 @@ class DealAnalyzer:
                 deal_data["Deck Link"] = deck_link
             
             self.logger.info("Deal analysis complete.")
-            return deal_data
+            return {
+                "deal_data": deal_data,
+                "input_data": self.input_data
+            }
             
         except Exception as e:
             self.logger.error(f"Error analyzing deal: {str(e)}", exc_info=True)
-            return {}
+            return {
+                "deal_data": {},
+                "input_data": self.input_data
+            }
 
     async def _extract_initial_info(self, message_text: str, deck_data: str) -> Dict[str, Any]:
         """從消息和 OCR 文本中提取初始信息"""
@@ -147,17 +182,7 @@ class DealAnalyzer:
                 deck_data=deck_data
             )
             
-            completion = await self.openai_client.chat.completions.create(
-                model=self.ai_model,
-                messages=[
-                    {"role": "system", "content": "你是一個專門分析公司信息的 AI 分析師。"},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"}
-            )
-            
-            response = json.loads(completion.choices[0].message.content)
-            return response
+            return await self._get_completion(prompt, "initial_info")
         except Exception as e:
             self.logger.error(f"提取初始信息時出錯: {str(e)}")
             self.logger.error(traceback.format_exc())
@@ -248,18 +273,7 @@ class DealAnalyzer:
                 search_content=search_content
             )
             
-            completion = await self.openai_client.chat.completions.create(
-                model=self.ai_model,
-                messages=[
-                    {"role": "system", "content": "你是一個專門分析公司信息的 AI 分析師，需要綜合多個來源的信息。"},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"}
-            )
-
-            # 解析分析結果
-            company_info = json.loads(completion.choices[0].message.content)
-            self.logger.info(f"Raw completion response (_get_company_details): {completion.choices[0].message.content}")
+            company_info = await self._get_completion(prompt, "company_details")
 
             # 返回結構化信息
             full_company_summary = f"""【One Liner】
@@ -337,17 +351,7 @@ class DealAnalyzer:
                 deck_data=deck_data
             )
             
-            completion = await self.openai_client.chat.completions.create(
-                model=self.ai_model,
-                messages=[
-                    {"role": "system", "content": "你是一個專門提取專業背景信息的 AI 分析師。"},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"}
-            )
-            
-            # 解析分析結果
-            founder_info = json.loads(completion.choices[0].message.content)
+            founder_info = await self._get_completion(prompt, "founder_background")
             
             # 返回結構化信息
             result = {
@@ -414,6 +418,14 @@ class DealAnalyzer:
             if hasattr(response, 'citations'):
                 citations = response.citations
             
+            # 更新 input_data
+            # 找到第一個空的 Web Prompt 位置
+            for i in range(1, 4):
+                if not self.input_data[f"Web Prompt{i}"]:
+                    self.input_data[f"Web Prompt{i}"] = query
+                    self.input_data[f"Web Content{i}"] = text_content
+                    break
+            
             self.logger.info("\n回應內容:")
             self.logger.info(text_content)
             
@@ -434,7 +446,7 @@ class DealAnalyzer:
             self.logger.error(f"錯誤詳情: {str(e)}")
             self.logger.error("完整錯誤信息:", exc_info=True)
 
-    async def _get_completion(self, prompt: str) -> Dict[str, Any]:
+    async def _get_completion(self, prompt: str, result_type: str = "general") -> Dict[str, Any]:
         """使用 OpenAI API 獲取完成結果"""
         try:
             completion = await self.openai_client.chat.completions.create(
@@ -448,6 +460,15 @@ class DealAnalyzer:
             
             # 解析 JSON 響應
             response = json.loads(completion.choices[0].message.content)
+            
+            # 更新 input_data
+            # 找到第一個空的 AI Prompt 位置
+            for i in range(1, 6):
+                if not self.input_data[f"AI Prompt{i}"]:
+                    self.input_data[f"AI Prompt{i}"] = prompt
+                    self.input_data[f"AI Content{i}"] = json.dumps(response, ensure_ascii=False)
+                    break
+            
             self.logger.info(f"Raw completion response: {completion.choices[0].message.content}")
             return response
             

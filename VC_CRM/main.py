@@ -115,7 +115,9 @@ class DealSourcingBot:
             logger.info("Starting message analysis...")
             try:
                 # Analyze the deal with the summary
-                deal_data = await self.deal_analyzer.analyze_deal(message_text, deck_data)
+                analysis_result = await self.deal_analyzer.analyze_deal(message_text, deck_data)
+                deal_data = analysis_result["deal_data"]
+                input_data = analysis_result["input_data"]
                 logger.info(f"Analysis complete. Deal data: {str(deal_data)[:100]}...")  # Log first 100 chars
             except Exception as e:
                 logger.error(f"Error in deal analysis: {str(e)}")
@@ -125,6 +127,7 @@ class DealSourcingBot:
             #Save to Google Doc
             logger.info("Saving to Google Doc...")
             try:
+                # 將 deal_data 和 input_data 都傳給 doc_manager
                 result = await self.doc_manager.create_doc(deal_data)
                 doc_url = result["doc_url"]
                 logger.info(f"Data saved to Google Doc successfully. URL: {doc_url}")
@@ -137,7 +140,8 @@ class DealSourcingBot:
             # Save to Google Sheets
             logger.info("Saving to Google Sheets...")
             try:
-                sheet_url = await self.sheets_manager.save_deal(deal_data, doc_url)
+                # 將 deal_data 和 input_data 都傳給 sheets_manager
+                sheet_url = await self.sheets_manager.save_deal(deal_data, input_data, doc_url)
                 logger.info(f"Data saved to sheets successfully. URL: {sheet_url}")
             except Exception as e:
                 logger.error(f"Error saving to sheets: {str(e)}")
