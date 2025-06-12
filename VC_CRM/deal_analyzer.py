@@ -143,6 +143,27 @@ class DealAnalyzer:
                 # 只處理第一位創辦人（簡單解決方案）
                 first_founder = founder_names[0]
                 founder_info = await self._research_founder_background(first_founder, company_name, deck_data)
+            else:
+                # 如果沒有找到創辦人，生成空的創辦人信息
+                founder_info = {
+                    'title': 'N/A',
+                    'background': 'N/A',
+                    'previous_companies': 'N/A',
+                    'education': 'N/A',
+                    'achievements': 'N/A',
+                    'LinkedIn URL': 'N/A'
+                }
+                # 生成空的 AI Prompt/Content 以保持結構完整
+                for i in range(1, 6):
+                    if not self.input_data[f"AI Prompt{i}"]:
+                        self.input_data[f"AI Prompt{i}"] = f"No founder found for {company_name}"
+                        self.input_data[f"AI Content{i}"] = json.dumps({"error": "No founder information available"}, ensure_ascii=False)
+            
+            # 確保 Web Prompt/Content 結構完整
+            for i in range(1, 4):
+                if not self.input_data[f"Web Prompt{i}"]:
+                    self.input_data[f"Web Prompt{i}"] = f"General search for {company_name}"
+                    self.input_data[f"Web Content{i}"] = "No additional information found"
             
             # 提取文檔連結
             deck_link = self.extract_deck_link(message_text)

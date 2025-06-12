@@ -30,22 +30,22 @@ class SheetsManager:
         
         # Prepare row data
         row_data = [
-            "",
-            "",
+            None,
+            None,
             opportunity,
             description,
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             log_link,
             deck_link,
-            "",
-            "",
-            "",
-            "",
+            None,
+            None,
+            None,
+            None,
             datetime.now().strftime('%Y-%m-%d %H:%M:%S')  # Timestamp
         ]
 
@@ -144,28 +144,28 @@ class SheetsManager:
             company_name,
             web_prompts[0],  # Web Prompt1
             web_contents[0],  # Web Content1
-            '',  # Score1
+            None,  # Score1 - 不設置值以保留下拉選單
             web_prompts[1],  # Web Prompt2
             web_contents[1],  # Web Content2
-            '',  # Score2
+            None,  # Score2 - 不設置值以保留下拉選單
             web_prompts[2],  # Web Prompt3
             web_contents[2],  # Web Content3
-            '',  # Score3
+            None,  # Score3 - 不設置值以保留下拉選單
             ai_prompts[0],  # AI Prompt1
             ai_contents[0],  # AI Content1
-            '',  # Score4
+            None,  # Score4 - 不設置值以保留下拉選單
             ai_prompts[1],  # AI Prompt2
             ai_contents[1],  # AI Content2
-            '',  # Score5
+            None,  # Score5 - 不設置值以保留下拉選單
             ai_prompts[2],  # AI Prompt3
             ai_contents[2],  # AI Content3
-            '',  # Score6
+            None,  # Score6 - 不設置值以保留下拉選單
             ai_prompts[3],  # AI Prompt4
             ai_contents[3],  # AI Content4
-            '',  # Score7
+            None,  # Score7 - 不設置值以保留下拉選單
             ai_prompts[4],  # AI Prompt5
             ai_contents[4],  # AI Content5
-            ''   # Score8
+            None   # Score8 - 不設置值以保留下拉選單
         ]
         
         # 檢查並更新表頭

@@ -128,7 +128,7 @@ class DealSourcingBot:
             logger.info("Saving to Google Doc...")
             try:
                 # 將 deal_data 和 input_data 都傳給 doc_manager
-                result = await self.doc_manager.create_doc(deal_data)
+                result = await self.doc_manager.create_doc(deal_data, input_data)
                 doc_url = result["doc_url"]
                 logger.info(f"Data saved to Google Doc successfully. URL: {doc_url}")
                 

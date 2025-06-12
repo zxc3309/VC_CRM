@@ -55,7 +55,7 @@ class DocManager:
                     formatted.append(f"{i}. {key}: {value}")
         return "\n".join(formatted)
     
-    async def suggest_questions_with_gpt(self, deal_data) -> list[str]:
+    async def suggest_questions_with_gpt(self, deal_data, input_data) -> list[str]:
         """根據 pitch deck 摘要，自動建議第一次接觸該新創應該問的問題"""
         try:
             # 從 prompt manager 獲取問題列表
@@ -91,12 +91,20 @@ class DocManager:
                 # fallback in case not JSON-formatted
                 questions = [line.strip("- ").strip() for line in result.strip().split("\n") if line]
 
+            # 將 prompt 和結果存到 input_data 中
+            # 找到第一個空的 AI Prompt 位置
+            for i in range(1, 6):
+                if not input_data.get(f"AI Prompt{i}"):
+                    input_data[f"AI Prompt{i}"] = prompt
+                    input_data[f"AI Content{i}"] = json.dumps({"questions": questions}, ensure_ascii=False)
+                    break
+
             return questions
         except Exception as e:
             self.logger.error(f"生成問題時發生錯誤：{str(e)}")
             return []
 
-    async def create_doc(self, deal_data):
+    async def create_doc(self, deal_data, input_data):
         # 資料前處理
         all_founder_names = ", ".join(deal_data.get("founder_name", [])) if deal_data.get("founder_name") else "N/A"
         founder_info = deal_data.get("founder_info", {})
@@ -108,7 +116,7 @@ class DocManager:
         company_name = self.stringify(deal_data.get("company_name", "N/A"))
         company_info = self.stringify(deal_data.get("company_info", {}).get("company_introduction", "N/A"))
         funding_info = self.stringify(deal_data.get("funding_info", "N/A"))
-        suggested_questions = self.format_questions(await self.suggest_questions_with_gpt(deal_data))
+        suggested_questions = self.format_questions(await self.suggest_questions_with_gpt(deal_data, input_data))
         # 獲取 deck_link，如果是 N/A 則不創建超連結
         deck_link = deal_data.get("Deck Link", "N/A")
 
