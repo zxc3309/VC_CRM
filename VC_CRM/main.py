@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from telegram import Update, File
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from deal_analyzer import DealAnalyzer
-from sheets_manager import SheetsManager
+from sheets_manager import GoogleSheetsManager
 from deck_browser import DeckBrowser
 from doc_manager import DocManager
 from prompt_manager import GoogleSheetPromptManager
@@ -32,7 +32,7 @@ class DealSourcingBot:
         self.deck_browser = DeckBrowser()
         self.deal_analyzer = DealAnalyzer()
         self.doc_manager = DocManager()
-        self.sheets_manager = SheetsManager()
+        self.sheets_manager = GoogleSheetsManager()
         logger.debug("Initialization complete")
         self.prompt_manager = GoogleSheetPromptManager()
 
