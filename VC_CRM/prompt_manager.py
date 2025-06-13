@@ -4,6 +4,10 @@ import os
 from dotenv import load_dotenv
 import logging
 import re
+from datetime import datetime
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
+import json
 
 # 設置日誌
 logging.basicConfig(level=logging.INFO)
@@ -17,12 +21,41 @@ class GoogleSheetPromptManager:
         if not sheet_id:
             raise ValueError("未設定 PROMPT_MANAGER 環境變數")
         
-        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        service_account_path = os.path.join(current_dir, 'service_account.json')
+        # 更新權限範圍
+        self.SCOPES = [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/drive',
+            'https://spreadsheets.google.com/feeds'
+        ]
+        self.SPREADSHEET_ID = os.getenv('GOOGLE_SHEETS_ID')
+        
+        # 從環境變量獲取 service account 憑證
+        service_account_json = os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON', '{}')
+        if service_account_json == '{}':
+            # 如果環境變量為空，嘗試從文件讀取
+            try:
+                with open('service_account.json', 'r') as f:
+                    service_account_json = f.read()
+            except FileNotFoundError:
+                raise ValueError("未找到 service_account.json 文件且環境變量 GOOGLE_SERVICE_ACCOUNT_JSON 未設置")
         
         try:
-            creds = ServiceAccountCredentials.from_json_keyfile_name(service_account_path, scope)
+            service_account_info = json.loads(service_account_json)
+        except json.JSONDecodeError as e:
+            logger.error(f"解析 service account JSON 失敗: {str(e)}")
+            raise ValueError("service account JSON 格式不正確")
+        
+        self.credentials = service_account.Credentials.from_service_account_info(
+            service_account_info,
+            scopes=self.SCOPES
+        )
+        
+        try:
+            # 使用環境變量中的憑證
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(
+                service_account_info,
+                self.SCOPES
+            )
             client = gspread.authorize(creds)
             
             # 找到目標試算表

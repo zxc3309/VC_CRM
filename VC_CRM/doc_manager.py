@@ -12,13 +12,13 @@ class DocManager:
         # 設置日誌
         self.logger = logging.getLogger(__name__)
         
-        self.SCOPES = [
-            'https://www.googleapis.com/auth/documents',
-            'https://www.googleapis.com/auth/drive'
-        ]
+        self.SCOPES = ['https://www.googleapis.com/auth/drive']
         self.FOLDER_ID = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
-        self.credentials = service_account.Credentials.from_service_account_file(
-            'service_account.json',
+        
+        # 從環境變量獲取 service account 憑證
+        service_account_info = json.loads(os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON'))
+        self.credentials = service_account.Credentials.from_service_account_info(
+            service_account_info,
             scopes=self.SCOPES
         )
         self.docs_service = build('docs', 'v1', credentials=self.credentials, cache_discovery=False)

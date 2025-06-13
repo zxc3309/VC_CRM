@@ -9,9 +9,10 @@ class SheetsManager:
         self.SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
         self.SPREADSHEET_ID = os.getenv('GOOGLE_SHEETS_ID')
         
-        # Load credentials from service account file
-        self.credentials = service_account.Credentials.from_service_account_file(
-            'service_account.json',
+        # 從環境變量獲取 service account 憑證
+        service_account_info = json.loads(os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON'))
+        self.credentials = service_account.Credentials.from_service_account_info(
+            service_account_info,
             scopes=self.SCOPES
         )
     
