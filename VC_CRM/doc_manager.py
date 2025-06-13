@@ -6,21 +6,38 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from openai import AsyncOpenAI
 from prompt_manager import GoogleSheetPromptManager
+from dotenv import load_dotenv
+
+# 設置日誌
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class DocManager:
     def __init__(self):
-        # 設置日誌
-        self.logger = logging.getLogger(__name__)
+        load_dotenv(override=True)
+        self.FOLDER_ID = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+        if not self.FOLDER_ID:
+            raise ValueError("未設定 GOOGLE_DRIVE_FOLDER_ID 環境變數")
         
         self.SCOPES = ['https://www.googleapis.com/auth/drive']
-        self.FOLDER_ID = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
         
-        # 從環境變量獲取 service account 憑證
-        service_account_info = json.loads(os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON'))
-        self.credentials = service_account.Credentials.from_service_account_info(
-            service_account_info,
-            scopes=self.SCOPES
-        )
+        try:
+            # 從文件讀取 service account 憑證
+            with open('VC_CRM/service_account.json', 'r') as f:
+                service_account_info = json.load(f)
+            
+            self.credentials = service_account.Credentials.from_service_account_info(
+                service_account_info,
+                scopes=self.SCOPES
+            )
+            
+            self.service = build('drive', 'v3', credentials=self.credentials)
+            logger.info("✅ 成功連接到 Google Drive")
+            
+        except Exception as e:
+            logger.error(f"❌ 初始化失敗: {str(e)}")
+            raise
+
         self.docs_service = build('docs', 'v1', credentials=self.credentials, cache_discovery=False)
         self.drive_service = build('drive', 'v3', credentials=self.credentials, cache_discovery=False)
         self.openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -101,7 +118,7 @@ class DocManager:
 
             return questions
         except Exception as e:
-            self.logger.error(f"生成問題時發生錯誤：{str(e)}")
+            logger.error(f"生成問題時發生錯誤：{str(e)}")
             return []
 
     async def create_doc(self, deal_data, input_data):

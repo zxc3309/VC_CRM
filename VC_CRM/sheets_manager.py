@@ -1,20 +1,52 @@
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 import os
+from dotenv import load_dotenv
+import logging
 from datetime import datetime
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 import json
 
-class SheetsManager:
+# 設置日誌
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class GoogleSheetsManager:
     def __init__(self):
-        self.SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+        load_dotenv(override=True)
         self.SPREADSHEET_ID = os.getenv('GOOGLE_SHEETS_ID')
+        if not self.SPREADSHEET_ID:
+            raise ValueError("未設定 GOOGLE_SHEETS_ID 環境變數")
         
-        # 從環境變量獲取 service account 憑證
-        service_account_info = json.loads(os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON'))
-        self.credentials = service_account.Credentials.from_service_account_info(
-            service_account_info,
-            scopes=self.SCOPES
-        )
+        # 更新權限範圍
+        self.SCOPES = [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/drive',
+            'https://spreadsheets.google.com/feeds'
+        ]
+        
+        try:
+            # 從文件讀取 service account 憑證
+            with open('VC_CRM/service_account.json', 'r') as f:
+                service_account_info = json.load(f)
+            
+            self.credentials = service_account.Credentials.from_service_account_info(
+                service_account_info,
+                scopes=self.SCOPES
+            )
+            
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(
+                service_account_info,
+                self.SCOPES
+            )
+            self.client = gspread.authorize(creds)
+            self.sheet = self.client.open_by_key(self.SPREADSHEET_ID).sheet1
+            logger.info("✅ 成功連接到 Google Sheets")
+            
+        except Exception as e:
+            logger.error(f"❌ 初始化失敗: {str(e)}")
+            raise
     
     async def save_deal(self, deal_data, input_data, doc_url):
         """Save simplified deal info (opportunity, description, log, deck) to Google Sheets."""
