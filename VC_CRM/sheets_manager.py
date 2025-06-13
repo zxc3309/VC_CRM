@@ -19,6 +19,9 @@ class SheetsManager:
         """Save simplified deal info (opportunity, description, log, deck) to Google Sheets."""
         service = build('sheets', 'v4', credentials=self.credentials, cache_discovery=False)
 
+        # 使用正確的工作表名稱
+        sheet_name = 'Web3 Pipeline (Current)'
+
         # 擷取必要資料
         opportunity = deal_data.get('company_name', 'N/A')  # Opportunity (公司名稱)
         description = deal_data.get('company_info', {}).get('company_one_liner', 'N/A')  # Description
@@ -46,7 +49,7 @@ class SheetsManager:
             None,
             None,
             None,
-            datetime.now().strftime('%Y-%m-%d %H:%M:%S')  # Timestamp
+            datetime.now().strftime('%m/%d/%Y')  # 只保留月/日/年
         ]
 
         # Check and update headers if needed
@@ -62,7 +65,7 @@ class SheetsManager:
             'Round Size',
             'Pre-M',
             'Log',
-            'Deck'
+            'Deck',
             'Source',
             'Source Tag',
             'Location',
@@ -71,7 +74,7 @@ class SheetsManager:
         ]
         
         # Get the first row to check headers
-        header_range = 'Deals!A1:Q1'  # Update range to include new column
+        header_range = f"'{sheet_name}'!A1:Q1"  # 使用單引號包裹工作表名稱
         header_result = service.spreadsheets().values().get(
             spreadsheetId=self.SPREADSHEET_ID,
             range=header_range
@@ -87,7 +90,7 @@ class SheetsManager:
             ).execute()
         
         # Append row to sheet
-        range_name = 'Deals!A:Q'  # Update range to include new column
+        range_name = f"'{sheet_name}'!A:Q"  # 使用單引號包裹工作表名稱
         value_input_option = 'USER_ENTERED'
         insert_data_option = 'INSERT_ROWS'
         
@@ -115,7 +118,7 @@ class SheetsManager:
         service = build('sheets', 'v4', credentials=self.credentials, cache_discovery=False)
         
         # 準備要記錄的數據
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        timestamp = datetime.now().strftime('%m/%d/%Y')  # 只保留月/日/年
         
         # 獲取公司名稱（從 deal_data 中）
         company_name = deal_data.get('company_name', 'N/A')
@@ -142,6 +145,10 @@ class SheetsManager:
         row_data = [
             timestamp,
             company_name,
+            json.dumps({
+                "AI Model": input_data.get("ai_model", "N/A"),
+                "Search Model": input_data.get("search_model", "N/A")
+            }, ensure_ascii=False),  # Model Usage
             web_prompts[0],  # Web Prompt1
             web_contents[0],  # Web Content1
             None,  # Score1 - 不設置值以保留下拉選單
@@ -172,6 +179,7 @@ class SheetsManager:
         headers = [
             'Timestamp',
             'Company Name',
+            'Model Usage',
             'Web Prompt1',
             'Web Content1',
             'Score',
@@ -199,7 +207,7 @@ class SheetsManager:
         ]
         
         # 獲取第一行來檢查表頭
-        header_range = 'Prompt Engineering!A1:Z1'
+        header_range = "'Prompt Engineering'!A1:AA1"  # 更新範圍以包含所有列
         try:
             header_result = service.spreadsheets().values().get(
                 spreadsheetId=self.SPREADSHEET_ID,
@@ -224,7 +232,7 @@ class SheetsManager:
             ).execute()
         
         # 添加數據行
-        range_name = 'Prompt Engineering!A:Z'
+        range_name = "'Prompt Engineering'!A:AA"  # 更新範圍以包含所有列
         value_input_option = 'USER_ENTERED'
         insert_data_option = 'INSERT_ROWS'
         

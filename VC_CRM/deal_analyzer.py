@@ -68,6 +68,10 @@ class DealAnalyzer:
         self.search_model = self.prompt_manager.get_prompt('search_model') or "gpt-4.1"  # 如果沒有設置，默認使用 gpt-4.1
         self.logger.info(f"Using search model: {self.search_model}")
 
+        # 將模型信息添加到 input_data
+        self.input_data["ai_model"] = self.ai_model
+        self.input_data["search_model"] = self.search_model
+
     def extract_deck_link(self, message: str) -> Optional[str]:
         """從消息中提取文檔連結"""
         if not message:
