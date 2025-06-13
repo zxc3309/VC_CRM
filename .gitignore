@@ -44,10 +44,6 @@ logs/
 # Environment variables
 .env
 
-# Service account
-service_account.json
-**/service_account.json
-
 # Temporary files
 *.tmp
 *.temp
@@ -55,3 +51,6 @@ service_account.json
 # OS
 .DS_Store
 Thumbs.db 
+
+# Service Account
+# service_account.json  # 暫時註釋掉，允許推送到倉庫 
