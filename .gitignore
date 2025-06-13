@@ -52,5 +52,3 @@ logs/
 .DS_Store
 Thumbs.db 
 
-# Service Account
-# service_account.json  # 暫時註釋掉，允許推送到倉庫 
