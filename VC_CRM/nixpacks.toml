@@ -8,4 +8,4 @@ cmds = [
 ]
 
 [start]
-cmd = 'cd VC_CRM && python main.py'
+cmd = 'python main.py'
