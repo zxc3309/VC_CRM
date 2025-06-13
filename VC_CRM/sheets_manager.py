@@ -28,7 +28,7 @@ class GoogleSheetsManager:
         
         try:
             # 從文件讀取 service account 憑證
-            with open('VC_CRM/service_account.json', 'r') as f:
+            with open('service_account.json', 'r') as f:
                 service_account_info = json.load(f)
             
             self.credentials = service_account.Credentials.from_service_account_info(
