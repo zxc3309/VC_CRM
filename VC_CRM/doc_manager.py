@@ -7,6 +7,7 @@ from google.oauth2 import service_account
 from openai import AsyncOpenAI
 from prompt_manager import GoogleSheetPromptManager
 from dotenv import load_dotenv
+import base64
 
 # 設置日誌
 logging.basicConfig(level=logging.INFO)
@@ -19,12 +20,16 @@ class DocManager:
         if not self.FOLDER_ID:
             raise ValueError("未設定 GOOGLE_DRIVE_FOLDER_ID 環境變數")
         
-        self.SCOPES = ['https://www.googleapis.com/auth/drive']
+        self.SCOPES = ['https://www.googleapis.com/auth/drive.file']
         
         try:
-            # 從文件讀取 service account 憑證
-            with open('service_account.json', 'r') as f:
-                service_account_info = json.load(f)
+            # 從環境變數讀取 base64 編碼的 service account
+            base64_content = os.getenv('SERVICE_ACCOUNT_BASE64')
+            if not base64_content:
+                raise ValueError("未設定 SERVICE_ACCOUNT_BASE64 環境變數")
+            
+            # 解碼 base64 內容
+            service_account_info = json.loads(base64.b64decode(base64_content).decode())
             
             self.credentials = service_account.Credentials.from_service_account_info(
                 service_account_info,
