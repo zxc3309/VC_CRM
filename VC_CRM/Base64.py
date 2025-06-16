@@ -1,8 +1,20 @@
 import base64
+from dotenv import load_dotenv
+import os
+import json
 
 def convert_to_base64(input_text: str) -> str:
     """將輸入文字轉換為 base64 格式"""
-    return base64.b64encode(input_text.encode('utf-8')).decode('utf-8')
+    # 確保輸入是有效的 JSON
+    try:
+        json.loads(input_text)
+    except json.JSONDecodeError:
+        print("❌ 輸入的文字不是有效的 JSON 格式")
+        return None
+    
+    # 轉換為 base64
+    base64_data = base64.b64encode(input_text.encode('utf-8')).decode('utf-8')
+    return base64_data
 
 def main():
     print("請選擇操作模式：")
@@ -15,8 +27,9 @@ def main():
             with open('VC_CRM/service_account.json', 'r') as f:
                 service_account_data = f.read()
             base64_data = convert_to_base64(service_account_data)
-            print("\n轉換結果：")
-            print(base64_data)
+            if base64_data:
+                print("\n轉換結果：")
+                print(base64_data)
         
         except FileNotFoundError:
             print("❌ 找不到 service_account.json 檔案")
@@ -34,8 +47,9 @@ def main():
         
         input_text = "\n".join(lines)
         base64_data = convert_to_base64(input_text)
-        print("\n轉換結果：")
-        print(base64_data)
+        if base64_data:
+            print("\n轉換結果：")
+            print(base64_data)
     
     else:
         print("❌ 無效的選項")
