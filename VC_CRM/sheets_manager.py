@@ -8,6 +8,7 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 import json
 import base64
+from prompt_manager import GoogleSheetPromptManager
 
 # 設置日誌
 logging.basicConfig(level=logging.INFO)
@@ -58,7 +59,9 @@ class GoogleSheetsManager:
         service = build('sheets', 'v4', credentials=self.credentials, cache_discovery=False)
 
         # 使用正確的工作表名稱
-        sheet_name = 'Web3 Pipeline (Current)'
+        prompt_manager = GoogleSheetPromptManager()
+        sheet_name = prompt_manager.get_prompt('main_sheet_name')
+        print(sheet_name)
 
         # 擷取必要資料
         opportunity = deal_data.get('company_name', 'N/A')  # Opportunity (公司名稱)
@@ -286,3 +289,5 @@ class GoogleSheetsManager:
             body=value_range_body
         )
         request.execute()
+
+
