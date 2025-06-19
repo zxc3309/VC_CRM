@@ -136,6 +136,7 @@ class DocManager:
         founder_education = self.stringify(founder_info.get("education", "N/A"))
         founder_achievements = self.stringify(founder_info.get("achievements", "N/A"))
         company_name = self.stringify(deal_data.get("company_name", "N/A"))
+        company_category= self.stringify(deal_data.get("company_category", "N/A"))
         company_info = self.stringify(deal_data.get("company_info", {}).get("company_introduction", "N/A"))
         funding_info = self.stringify(deal_data.get("funding_info", "N/A"))
         suggested_questions = self.format_questions(await self.suggest_questions_with_gpt(deal_data, input_data))
@@ -160,6 +161,7 @@ class DocManager:
         sections = [
             ("Analysis Date：", datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
             ("Company Name：", company_name),
+            ("Company Category：", company_category),
             ("Brief Introduction", company_info),
             ("Funding Information", funding_info),
             ("Founder Name", all_founder_names),

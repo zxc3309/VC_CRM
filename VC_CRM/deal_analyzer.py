@@ -140,7 +140,9 @@ class DealAnalyzer:
             
             #尋找更多公司信息
             company_info = await self._get_company_details(company_name, founder_names, message_text, deck_data)
+            company_category = company_info.get("company_category", "N/A")
             self.logger.info(f"獲取到公司 {company_name} 的額外信息")
+
             
             #為每個創辦人獨立研究背景
             if founder_names:
@@ -178,7 +180,8 @@ class DealAnalyzer:
                 "founder_name": founder_names if founder_names else [],
                 "company_info": company_info,
                 "founder_info": founder_info,
-                "funding_info": funding_info
+                "funding_info": funding_info,
+                "company_category": company_category
             }
             
             # 如果有找到連結，添加到結果中
@@ -319,13 +322,36 @@ class DealAnalyzer:
 【Key Milestones】
 {company_info.get('key_milestones', 'N/A')}""".strip()
 
+            # 取得分類依據內容
+            category_differentiation = self.prompt_manager.get_prompt('category_differentiation')
+            company_category = "N/A"
+            if category_differentiation:
+                try:
+                    category_prompt = (
+                        f"請根據下列分類依據，判斷公司所屬分類，僅以 JSON 格式回傳：{{\"category\": \"分類名稱\"}}\n"
+                        f"【分類依據】\n{category_differentiation}\n"
+                        f"【公司資訊】\n{company_info}\n"
+                    )
+                    self.logger.info(f"分類判斷 prompt: {category_prompt}")
+                    category_result = await self._get_completion(category_prompt, result_type="category")
+                    self.logger.info(f"AI 回傳分類結果: {category_result}")
+                    if isinstance(category_result, dict):
+                        company_category = category_result.get('category') or list(category_result.values())[0]
+                    elif isinstance(category_result, str):
+                        company_category = category_result
+                except Exception as e:
+                    self.logger.error(f"分類判斷失敗: {str(e)}")
+            else:
+                self.logger.warning("未取得 category_differentiation 內容，無法自動分類")
+
             result = {
                 "company_introduction": full_company_summary,
                 "company_one_liner": company_info.get('company_introduction_one_liner', 'N/A'),
-                "company_products": company_info.get('solution', 'N/A'),  # 使用 solution 作為產品信息
+                "company_products": company_info.get('solution', 'N/A'),
                 "company_market": company_info.get('market_position', 'N/A'),
-                "company_traction": company_info.get('traction', 'N/A'),  # 使用 traction 作為財務信息
-                "company_milestones": company_info.get('key_milestones', 'N/A')
+                "company_traction": company_info.get('traction', 'N/A'),
+                "company_milestones": company_info.get('key_milestones', 'N/A'),
+                "company_category": company_category
             }
             
             self.logger.info(f"成功提取 {company_name} 的公司信息 (綜合來源)")
@@ -340,7 +366,8 @@ class DealAnalyzer:
                 "company_products": "N/A",
                 "company_market": "N/A",
                 "company_traction": "N/A",
-                "company_milestones": "N/A"
+                "company_milestones": "N/A",
+                "company_category": "N/A"
             }
 
     async def _research_founder_background(self, founder_name: str, company_name: str, deck_data: str) -> Dict[str, Any]:

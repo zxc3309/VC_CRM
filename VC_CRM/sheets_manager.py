@@ -65,6 +65,7 @@ class GoogleSheetsManager:
 
         # 擷取必要資料
         opportunity = deal_data.get('company_name', 'N/A')  # Opportunity (公司名稱)
+        category = deal_data.get('company_category', 'N/A')
         description = deal_data.get('company_info', {}).get('company_one_liner', 'N/A')  # Description
         deck_link_raw = deal_data.get('Deck Link', '')  # Deck 連結
 
@@ -89,8 +90,9 @@ class GoogleSheetsManager:
             None,
             None,
             None,
-            None,
-            datetime.now().strftime('%m/%d/%Y')  # 只保留月/日/年
+            category,
+            datetime.now().strftime('%m/%d/%Y'),  # 只保留月/日/年
+            None
         ]
 
         # Check and update headers if needed
@@ -112,6 +114,7 @@ class GoogleSheetsManager:
             'Location',
             'Category',
             'Created Time'
+            'Updated Date'
         ]
         
         # Get the first row to check headers
