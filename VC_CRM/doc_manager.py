@@ -10,11 +10,10 @@ from dotenv import load_dotenv
 import base64
 
 # 設置日誌
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class DocManager:
-    def __init__(self):
+    def __init__(self, prompt_manager: GoogleSheetPromptManager = None):
         load_dotenv(override=True)
         self.FOLDER_ID = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
         if not self.FOLDER_ID:
@@ -46,7 +45,9 @@ class DocManager:
         self.docs_service = build('docs', 'v1', credentials=self.credentials, cache_discovery=False)
         self.drive_service = build('drive', 'v3', credentials=self.credentials, cache_discovery=False)
         self.openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.prompt_manager = GoogleSheetPromptManager()
+        
+        # 使用傳入的 prompt_manager 或建立新的
+        self.prompt_manager = prompt_manager or GoogleSheetPromptManager()
 
     def stringify(self, field):
         if isinstance(field, list):

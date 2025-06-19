@@ -11,7 +11,7 @@ import re
     
 class DealAnalyzer:
    
-    def __init__(self):
+    def __init__(self, prompt_manager: GoogleSheetPromptManager = None):
         # Load environment variables from .env file
         load_dotenv(override=True)
         
@@ -19,7 +19,6 @@ class DealAnalyzer:
         api_key = os.getenv("OPENAI_API_KEY")
         
         # 初始化日誌
-        logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
         
         # 初始化 input_data 字典
@@ -41,7 +40,9 @@ class DealAnalyzer:
             "AI Prompt5": "",
             "AI Content5": "",
             "deck_data": "",
-            "message_text": ""
+            "message_text": "",
+            "ai_model": "gpt-4.1",  # 預設值
+            "search_model": "gpt-4.1"  # 預設值
         }
         
         # 初始化 OpenAI 客戶端
@@ -57,20 +58,13 @@ class DealAnalyzer:
             self.logger.error("OPENAI_API_KEY environment variable is not set.")
             raise ValueError("API key is not set. Please set the OPENAI_API_KEY environment variable.")
         
-        # 初始化 prompt_manager
-        self.prompt_manager = GoogleSheetPromptManager()
+        # 使用傳入的 prompt_manager 或建立新的
+        self.prompt_manager = prompt_manager or GoogleSheetPromptManager()
         
-        # 從 prompt manager 獲取 AI model 設置
-        self.ai_model = self.prompt_manager.get_prompt('ai_model') or "gpt-4.1"  # 如果沒有設置，默認使用 gpt-4.1
-        self.logger.info(f"Using AI model: {self.ai_model}")
-        
-        # 設置搜索模型
-        self.search_model = self.prompt_manager.get_prompt('search_model') or "gpt-4.1"  # 如果沒有設置，默認使用 gpt-4.1
-        self.logger.info(f"Using search model: {self.search_model}")
+        # 初始化 model 變數（會在需要時即時讀取）
+        self.ai_model = None
+        self.search_model = None
 
-        # 將模型信息添加到 input_data
-        self.input_data["ai_model"] = self.ai_model
-        self.input_data["search_model"] = self.search_model
 
     def extract_deck_link(self, message: str) -> Optional[str]:
         """從消息中提取文檔連結"""
@@ -251,6 +245,11 @@ class DealAnalyzer:
                     search_content=search_results.get('content', ''),
                     deck_data=deck_data
                 )
+                
+                # 即時讀取 ai_model
+                if self.ai_model is None:
+                    self.ai_model = self.prompt_manager.get_prompt('ai_model') or "gpt-4.1"
+                    self.input_data["ai_model"] = self.ai_model
                 
                 completion = await self.openai_client.chat.completions.create(
                     model=self.ai_model,
@@ -444,6 +443,11 @@ class DealAnalyzer:
             self.logger.info("開始網絡搜索")
             self.logger.info("==================================================")
             self.logger.info(f"搜索查詢: {query}")
+            
+            # 即時讀取 search_model
+            if self.search_model is None:
+                self.search_model = self.prompt_manager.get_prompt('search_model') or "gpt-4.1"
+                self.input_data["search_model"] = self.search_model
             self.logger.info(f"使用模型: {self.search_model}")
             
             # 執行搜索
@@ -501,6 +505,11 @@ class DealAnalyzer:
     async def _get_completion(self, prompt: str, result_type: str = "general") -> Dict[str, Any]:
         """使用 OpenAI API 獲取完成結果"""
         try:
+            # 即時讀取 ai_model
+            if self.ai_model is None:
+                self.ai_model = self.prompt_manager.get_prompt('ai_model') or "gpt-4.1"
+                self.input_data["ai_model"] = self.ai_model
+            
             completion = await self.openai_client.chat.completions.create(
                 model=self.ai_model,
                 messages=[

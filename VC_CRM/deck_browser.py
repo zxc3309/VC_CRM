@@ -30,15 +30,6 @@ pytesseract.pytesseract.tesseract_cmd = os.getenv('TESSERACT', '/root/.nix-profi
 logger = logging.getLogger(__name__)
 # 5. 配置 Tesseract 路徑
 tesseract_path = os.getenv('TESSERACT', '/root/.nix-profile/bin/tesseract')
-
-# 確保 logger 有 handler
-if not logger.handlers:
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
-
 logger.info(f"Final Tesseract path: {pytesseract.pytesseract.tesseract_cmd}")
 
 logger.setLevel(logging.INFO)
@@ -48,10 +39,14 @@ prompt_manager = GoogleSheetPromptManager()
 
 class DeckBrowser:
     
-    def __init__(self):
+    def __init__(self, prompt_manager: GoogleSheetPromptManager = None):
         """Initialize the DeckBrowser."""
-        self.browser = None
+        # 使用傳入的 prompt_manager 或建立新的
+        self.prompt_manager = prompt_manager or GoogleSheetPromptManager()
+        
+        # 設置日誌
         self.logger = logging.getLogger(__name__)
+        self.browser = None
         self.email = os.getenv("DOCSEND_EMAIL")  # 替換為您的電子郵件
         self.path_helper = PathHelper()
 
@@ -378,7 +373,7 @@ class DeckBrowser:
             self.logger.info(f"訪問狀態碼: {response.status}")
             
             if response.status == 403:
-                self.logger.error("訪問被拒絕 (403 Forbidden)")
+                logger.error("訪問被拒絕 (403 Forbidden)")
                 await page.close()
                 return None
             
@@ -388,10 +383,10 @@ class DeckBrowser:
             # 檢查是否需要填寫電子郵件
             email_input = await page.query_selector('input[type="email"]')
             if email_input:
-                self.logger.info("需要填寫電子郵件才能訪問文檔")
+                logger.info("需要填寫電子郵件才能訪問文檔")
                 await page.type('input[type="email"]', self.email, delay=random.uniform(100, 200))
                 try:
-                    self.logger.info("嘗試點擊提交按鈕")
+                    logger.info("嘗試點擊提交按鈕")
                     await page.locator('button:has-text("Continue")').wait_for(state='visible', timeout=1000)
                     await page.locator('button:has-text("Continue")').click(timeout=1000)
                 except Exception as e:

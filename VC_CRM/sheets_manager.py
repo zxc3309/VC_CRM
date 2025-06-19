@@ -11,11 +11,10 @@ import base64
 from prompt_manager import GoogleSheetPromptManager
 
 # 設置日誌
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class GoogleSheetsManager:
-    def __init__(self):
+    def __init__(self, prompt_manager: GoogleSheetPromptManager = None):
         load_dotenv(override=True)
         self.SPREADSHEET_ID = os.getenv('GOOGLE_SHEETS_ID')
         if not self.SPREADSHEET_ID:

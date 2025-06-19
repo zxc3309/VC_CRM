@@ -29,12 +29,15 @@ logger = logging.getLogger(__name__)
 class DealSourcingBot:
     def __init__(self):
         logger.debug("Initializing Bots...")
-        self.deck_browser = DeckBrowser()
-        self.deal_analyzer = DealAnalyzer()
-        self.doc_manager = DocManager()
-        self.sheets_manager = GoogleSheetsManager()
-        logger.debug("Initialization complete")
+        # 建立一個共用的 prompt_manager 實例
         self.prompt_manager = GoogleSheetPromptManager()
+        
+        # 將 prompt_manager 傳給其他類別
+        self.deck_browser = DeckBrowser(prompt_manager=self.prompt_manager)
+        self.deal_analyzer = DealAnalyzer(prompt_manager=self.prompt_manager)
+        self.doc_manager = DocManager(prompt_manager=self.prompt_manager)
+        self.sheets_manager = GoogleSheetsManager(prompt_manager=self.prompt_manager)
+        logger.debug("Initialization complete")
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Start command received from user {update.effective_user.id}")
@@ -47,6 +50,9 @@ class DealSourcingBot:
         try:
             # 直接調用儲存的 prompt_manager 實例的 reload_prompts 方法
             self.prompt_manager.reload_prompts()
+            # 清空 deal_analyzer 的 model 變數，強制下次使用時重新讀取
+            self.deal_analyzer.ai_model = None
+            self.deal_analyzer.search_model = None
             await update.message.reply_text("🔄 Prompt 已重新載入成功！")
         except Exception as e:
             await update.message.reply_text(f"❌ 重新載入失敗：{str(e)}")

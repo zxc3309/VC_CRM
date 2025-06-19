@@ -4,14 +4,11 @@ import os
 from dotenv import load_dotenv
 import logging
 import re
-from datetime import datetime
-from googleapiclient.discovery import build
 from google.oauth2 import service_account
 import json
 import base64
 
 # 設置日誌
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class GoogleSheetPromptManager:
@@ -29,6 +26,7 @@ class GoogleSheetPromptManager:
             'https://spreadsheets.google.com/feeds'
         ]
         self.SPREADSHEET_ID = os.getenv('GOOGLE_SHEETS_ID')
+        self.sheet_id = sheet_id
         
         try:
             # 從環境變數讀取 base64 編碼的 service account
@@ -60,26 +58,41 @@ class GoogleSheetPromptManager:
             if not self.target_sheet:
                 raise ValueError(f"找不到 ID 為 {sheet_id} 的試算表")
             
-            # 使用第一個工作表
-            sheet = self.target_sheet.worksheets()[0]
-            records = sheet.get_all_records()
-            
-            # 清理提示詞中的換行符號
+            # 初始化 prompts 字典為空
             self.prompts = {}
-            for row in records:
-                prompt_id = row['prompt_id']
-                prompt_text = row['prompt_text']
-                # 清理換行符號和空格
-                prompt_text = prompt_text.replace('\r\n', ' ').replace('\n', ' ').strip()
-                self.prompts[prompt_id] = prompt_text
             
-            logger.info(f"✅ 成功載入 {len(self.prompts)} 個提示詞")
+            logger.info(f"✅ 成功初始化 Prompt Manager，等待首次讀取")
             
         except Exception as e:
             logger.error(f"❌ 初始化失敗: {str(e)}")
             raise
 
+    def _load_prompts_if_needed(self):
+        """如果 prompts 為空，則從 Google Sheets 載入"""
+        if not self.prompts:
+            try:
+                # 使用第一個工作表
+                sheet = self.target_sheet.worksheets()[0]
+                records = sheet.get_all_records()
+                
+                # 清理提示詞中的換行符號
+                self.prompts = {}
+                for row in records:
+                    prompt_id = row['prompt_id']
+                    prompt_text = row['prompt_text']
+                    # 清理換行符號和空格
+                    prompt_text = prompt_text.replace('\r\n', ' ').replace('\n', ' ').strip()
+                    self.prompts[prompt_id] = prompt_text
+                
+                logger.info(f"✅ 成功載入 {len(self.prompts)} 個提示詞")
+            except Exception as e:
+                logger.error(f"❌ 載入提示詞失敗: {str(e)}")
+                raise
+
     def get_prompt(self, prompt_id: str) -> str:
+        # 如果 prompts 為空，先載入
+        self._load_prompts_if_needed()
+        
         prompt = self.prompts.get(prompt_id)
         if prompt is None:
             logger.warning(f"❌ 找不到提示詞: {prompt_id}")
@@ -119,16 +132,8 @@ class GoogleSheetPromptManager:
     def reload_prompts(self):
         """手動重新載入 Google Sheet 中的 prompt"""
         try:
-            sheet = self.target_sheet.worksheets()[0]
-            records = sheet.get_all_records()
-
+            # 清空 prompts 字典，強制下次讀取時重新載入
             self.prompts = {}
-            for row in records:
-                prompt_id = row['prompt_id']
-                prompt_text = row['prompt_text']
-                prompt_text = prompt_text.replace('\r\n', ' ').replace('\n', ' ').strip()
-                self.prompts[prompt_id] = prompt_text
-
-            logger.info(f"🔄 成功重新載入 {len(self.prompts)} 個提示詞")
+            logger.info(f"🔄 已清空 prompts 快取，下次讀取時將重新載入")
         except Exception as e:
             logger.error(f"❌ 重新載入提示詞失敗: {str(e)}")
