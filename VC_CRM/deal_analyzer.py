@@ -99,6 +99,13 @@ class DealAnalyzer:
         """
         try:
             self.logger.info("Analyzing deal information...")
+
+            # 清空快取，即時讀取 ai_model 和 search_model
+            self.prompt_manager.prompts = {}
+            self.ai_model = self.prompt_manager.get_prompt('ai_model') or "gpt-4.1"
+            self.input_data["ai_model"] = self.ai_model
+            self.search_model = self.prompt_manager.get_prompt('search_model') or "gpt-4.1"
+            self.input_data["search_model"] = self.search_model
             
             # 更新 input_data
             self.input_data["message_text"] = message_text
@@ -245,11 +252,6 @@ class DealAnalyzer:
                     search_content=search_results.get('content', ''),
                     deck_data=deck_data
                 )
-                
-                # 即時讀取 ai_model
-                if self.ai_model is None:
-                    self.ai_model = self.prompt_manager.get_prompt('ai_model') or "gpt-4.1"
-                    self.input_data["ai_model"] = self.ai_model
                 
                 completion = await self.openai_client.chat.completions.create(
                     model=self.ai_model,
@@ -444,10 +446,6 @@ class DealAnalyzer:
             self.logger.info("==================================================")
             self.logger.info(f"搜索查詢: {query}")
             
-            # 即時讀取 search_model
-            if self.search_model is None:
-                self.search_model = self.prompt_manager.get_prompt('search_model') or "gpt-4.1"
-                self.input_data["search_model"] = self.search_model
             self.logger.info(f"使用模型: {self.search_model}")
             
             # 執行搜索
@@ -505,11 +503,6 @@ class DealAnalyzer:
     async def _get_completion(self, prompt: str, result_type: str = "general") -> Dict[str, Any]:
         """使用 OpenAI API 獲取完成結果"""
         try:
-            # 即時讀取 ai_model
-            if self.ai_model is None:
-                self.ai_model = self.prompt_manager.get_prompt('ai_model') or "gpt-4.1"
-                self.input_data["ai_model"] = self.ai_model
-            
             completion = await self.openai_client.chat.completions.create(
                 model=self.ai_model,
                 messages=[
