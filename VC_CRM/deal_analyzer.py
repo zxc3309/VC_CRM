@@ -23,6 +23,8 @@ class DealAnalyzer:
         
         # 初始化 input_data 字典
         self.input_data = {
+            "Category Prompt":"",
+            "Category Content":"",
             "Web Prompt1": "",
             "Web Content1": "",
             "Web Prompt2": "",
@@ -100,8 +102,10 @@ class DealAnalyzer:
         try:
             self.logger.info("Analyzing deal information...")
 
-                    # 初始化 input_data 字典
+            # 初始化 input_data 字典
             self.input_data = {
+                "Category Prompt": "",
+                "Category Content": "",
                 "Web Prompt1": "",
                 "Web Content1": "",
                 "Web Prompt2": "",
@@ -123,6 +127,8 @@ class DealAnalyzer:
                 "ai_model": "",  # 預設值
                 "search_model": ""  # 預設值
             }
+            
+            # 載入新 input_data 字典
 
             # 清空快取，即時讀取 ai_model 和 search_model
             self.prompt_manager.prompts = {}
@@ -160,6 +166,13 @@ class DealAnalyzer:
             if not founder_names:
                 founder_info = await self._search_founder_names(company_name, deck_data)
                 founder_names = founder_info.get("founder_names", [])
+            else:
+                # Skip one AI_prompt slot if founder names are already found
+                for i in range(1, 6):
+                    if not self.input_data[f"AI Prompt{i}"]:
+                        self.input_data[f"AI Prompt{i}"] = "Skipped - Founder names already found"
+                        self.input_data[f"AI Content{i}"] = json.dumps({"skipped": True, "reason": "Founder names already found"}, ensure_ascii=False)
+                        break
             
             self.logger.info(f"找到創辦人名稱: {founder_names}")
             
@@ -540,12 +553,22 @@ class DealAnalyzer:
             response = json.loads(completion.choices[0].message.content)
             
             # 更新 input_data
-            # 找到第一個空的 AI Prompt 位置
-            for i in range(1, 6):
-                if not self.input_data[f"AI Prompt{i}"]:
-                    self.input_data[f"AI Prompt{i}"] = prompt
-                    self.input_data[f"AI Content{i}"] = json.dumps(response, ensure_ascii=False)
-                    break
+            if result_type == "category":
+                # 限制 Category Prompt 和 Content 長度，避免寫入 Sheets 時出錯
+                maxlen = 1000
+                safe_prompt = prompt[:maxlen] if len(prompt) > maxlen else prompt
+                safe_content = json.dumps(response, ensure_ascii=False)
+                if len(safe_content) > maxlen:
+                    safe_content = safe_content[:maxlen]
+                self.input_data["Category Prompt"] = safe_prompt
+                self.input_data["Category Content"] = safe_content
+            else:
+                # 其他情況，找第一個空的 AI Prompt 位置
+                for i in range(1, 6):
+                    if not self.input_data[f"AI Prompt{i}"]:
+                        self.input_data[f"AI Prompt{i}"] = prompt
+                        self.input_data[f"AI Content{i}"] = json.dumps(response, ensure_ascii=False)
+                        break
             
             self.logger.info(f"Raw completion response: {completion.choices[0].message.content}")
             return response

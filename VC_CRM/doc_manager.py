@@ -19,7 +19,10 @@ class DocManager:
         if not self.FOLDER_ID:
             raise ValueError("未設定 GOOGLE_DRIVE_FOLDER_ID 環境變數")
         
-        self.SCOPES = ['https://www.googleapis.com/auth/drive.file']
+        self.SCOPES = [
+            'https://www.googleapis.com/auth/drive.file',
+            'https://www.googleapis.com/auth/documents'
+        ]
         
         try:
             # 從環境變數讀取 base64 編碼的 service account
@@ -146,94 +149,116 @@ class DocManager:
 
         doc_title = f"{company_name} Log"
 
-        # 建立文件
-        doc = self.docs_service.documents().create(body={'title': doc_title}).execute()
-        document_id = doc['documentId']
+        try:
+            # 建立文件
+            doc = self.docs_service.documents().create(body={'title': doc_title}).execute()
+            document_id = doc['documentId']
+            logger.info(f"✅ 成功建立文件: {doc_title}")
 
-        # 移動文件至指定資料夾
-        self.drive_service.files().update(
-            fileId=document_id,
-            addParents=self.FOLDER_ID,
-            removeParents='root',
-            fields='id, parents'
-        ).execute()
+            # 移動文件至指定資料夾
+            try:
+                self.drive_service.files().update(
+                    fileId=document_id,
+                    addParents=self.FOLDER_ID,
+                    removeParents='root',
+                    fields='id, parents'
+                ).execute()
+                logger.info(f"✅ 成功移動文件到指定資料夾")
+            except Exception as e:
+                logger.error(f"❌ 移動文件失敗: {str(e)}")
+                # 即使移動失敗，我們仍然繼續處理文件內容
+        except Exception as e:
+            logger.error(f"❌ 建立文件失敗: {str(e)}")
+            raise
 
-        # 準備內容段落
-        sections = [
-            ("Analysis Date：", datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
-            ("Company Name：", company_name),
-            ("Company Category：", company_category),
-            ("Brief Introduction", company_info),
-            ("Funding Information", funding_info),
-            ("Founder Name", all_founder_names),
-            ("Founder Title", founder_titles),
-            ("Founder Background", founder_backgrounds),
-            ("Founder Experience", founder_companies),
-            ("Founder Education", founder_education),
-            ("Founder Achievements", founder_achievements),
-            ("Suggested Questions", suggested_questions),
-            ("Deck Link：", deck_link)
-        ]
+        try:
+            # 準備內容段落
+            sections = [
+                ("Analysis Date：", datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+                ("Company Name：", company_name),
+                ("Company Category：", company_category),
+                ("Brief Introduction", company_info),
+                ("Funding Information", funding_info),
+                ("Founder Name", all_founder_names),
+                ("Founder Title", founder_titles),
+                ("Founder Background", founder_backgrounds),
+                ("Founder Experience", founder_companies),
+                ("Founder Education", founder_education),
+                ("Founder Achievements", founder_achievements),
+                ("Suggested Questions", suggested_questions),
+                ("Deck Link：", deck_link)
+            ]
 
-        # 插入請求集合
-        requests = []
-        index = 1  # 開始於 index=1，插入在文件開頭之後
+            # 插入請求集合
+            requests = []
+            index = 1  # 開始於 index=1，插入在文件開頭之後
 
-        for title, content in sections:
-        # 插入標題
-            requests.append({
-            'insertText': {
-                'location': {'index': index},
-                'text': f"{title}\n"
-            }
-            })
-            if len(title.strip()) > 0:
+            for title, content in sections:
+            # 插入標題
                 requests.append({
-                    'updateTextStyle': {
-                        'range': {
-                            'startIndex': index,
-                            'endIndex': index + len(title)
-                        },
-                        'textStyle': {
-                            'bold': True,
-                            'fontSize': {'magnitude': 12, 'unit': 'PT'}
-                        },
-                        'fields': 'bold,fontSize'
-                    }
-                })
-            index += len(title) + 1
-
-            # 插入內文
-            requests.append({
                 'insertText': {
                     'location': {'index': index},
-                    'text': f"{content}\n\n"
+                    'text': f"{title}\n"
                 }
-            })
+                })
+                if len(title.strip()) > 0:
+                    requests.append({
+                        'updateTextStyle': {
+                            'range': {
+                                'startIndex': index,
+                                'endIndex': index + len(title)
+                            },
+                            'textStyle': {
+                                'bold': True,
+                                'fontSize': {'magnitude': 12, 'unit': 'PT'}
+                            },
+                            'fields': 'bold,fontSize'
+                        }
+                    })
+                index += len(title) + 1
 
-            if len(content.strip()) > 0:
+                # 插入內文
                 requests.append({
-                    'updateTextStyle': {
-                        'range': {
-                            'startIndex': index,
-                            'endIndex': index + len(content)
-                        },
-                        'textStyle': {
-                            'fontSize': {'magnitude': 12, 'unit': 'PT'}
-                        },
-                        'fields': 'fontSize'
+                    'insertText': {
+                        'location': {'index': index},
+                        'text': f"{content}\n\n"
                     }
                 })
 
-            content_bytes = content.encode('utf-16-le')
-            index += len(content_bytes) // 2 + 2  # 每個字 2 bytes，加上 2 個換行
+                if len(content.strip()) > 0:
+                    requests.append({
+                        'updateTextStyle': {
+                            'range': {
+                                'startIndex': index,
+                                'endIndex': index + len(content)
+                            },
+                            'textStyle': {
+                                'fontSize': {'magnitude': 12, 'unit': 'PT'}
+                            },
+                            'fields': 'fontSize'
+                        }
+                    })
 
-        # 執行 batchUpdate 插入並套用格式
-        self.docs_service.documents().batchUpdate(
-            documentId=document_id,
-            body={'requests': requests}
-        ).execute()
+                content_bytes = content.encode('utf-16-le')
+                index += len(content_bytes) // 2 + 2  # 每個字 2 bytes，加上 2 個換行
 
-        return {
-            "doc_url": f"https://docs.google.com/document/d/{document_id}",
-        }
+            # 將請求分批處理，每批最多 20 個請求
+            batch_size = 20
+            for i in range(0, len(requests), batch_size):
+                batch_requests = requests[i:i + batch_size]
+                try:
+                    self.docs_service.documents().batchUpdate(
+                        documentId=document_id,
+                        body={'requests': batch_requests}
+                    ).execute()
+                    logger.info(f"✅ 成功處理第 {i//batch_size + 1} 批請求")
+                except Exception as e:
+                    logger.error(f"❌ 處理第 {i//batch_size + 1} 批請求時失敗: {str(e)}")
+                    raise
+
+            return {
+                "doc_url": f"https://docs.google.com/document/d/{document_id}",
+            }
+        except Exception as e:
+            logger.error(f"❌ 插入內容時發生錯誤: {str(e)}")
+            raise

@@ -160,62 +160,64 @@ class GoogleSheetsManager:
         """Save prompt engineering logs to the 'Prompt Engineering' tab."""
         service = build('sheets', 'v4', credentials=self.credentials, cache_discovery=False)
         
-        # 準備要記錄的數據
+        # 準備要記錄的資訊
         timestamp = datetime.now().strftime('%m/%d/%Y')  # 只保留月/日/年
-        
-        # 獲取公司名稱（從 deal_data 中）
         company_name = deal_data.get('company_name', 'N/A')
         
-        # 準備 web search 數據
+        # 從新的 input_data 結構中提取資訊
+        # 直接使用字串，不要用 list
+        category_prompt = str(input_data.get('Category Prompt', ''))
+        category_content = str(input_data.get('Category Content', ''))
+        
+        # 準備 web search 資訊
         web_prompts = []
         web_contents = []
-        
-        # 從新的 input_data 結構中提取 web search 數據
         for i in range(1, 4):
-            web_prompts.append(input_data.get(f'Web Prompt{i}', ''))
-            web_contents.append(input_data.get(f'Web Content{i}', ''))
+            web_prompts.append(str(input_data.get(f'Web Prompt{i}', '')))
+            web_contents.append(str(input_data.get(f'Web Content{i}', '')))
         
-        # 準備 AI prompt 數據
+        # 準備 AI prompt 資訊
         ai_prompts = []
         ai_contents = []
-        
-        # 從新的 input_data 結構中提取 AI prompt 數據
         for i in range(1, 6):
-            ai_prompts.append(input_data.get(f'AI Prompt{i}', ''))
-            ai_contents.append(input_data.get(f'AI Content{i}', ''))
+            ai_prompts.append(str(input_data.get(f'AI Prompt{i}', '')))
+            ai_contents.append(str(input_data.get(f'AI Content{i}', '')))
         
-        # 組合所有數據
+        # 組合所有資訊
         row_data = [
             timestamp,
             company_name,
-            json.dumps({
+            str({
                 "AI Model": input_data.get("ai_model", "N/A"),
                 "Search Model": input_data.get("search_model", "N/A")
-            }, ensure_ascii=False),  # Model Usage
+            }),  # Model Usage
+            category_prompt,
+            category_content,
+            None,  # Score - 不設置值以保留下拉選單
             web_prompts[0],  # Web Prompt1
             web_contents[0],  # Web Content1
-            None,  # Score1 - 不設置值以保留下拉選單
+            None,  # Score1
             web_prompts[1],  # Web Prompt2
             web_contents[1],  # Web Content2
-            None,  # Score2 - 不設置值以保留下拉選單
+            None,  # Score2
             web_prompts[2],  # Web Prompt3
             web_contents[2],  # Web Content3
-            None,  # Score3 - 不設置值以保留下拉選單
+            None,  # Score3
             ai_prompts[0],  # AI Prompt1
             ai_contents[0],  # AI Content1
-            None,  # Score4 - 不設置值以保留下拉選單
+            None,  # Score4
             ai_prompts[1],  # AI Prompt2
             ai_contents[1],  # AI Content2
-            None,  # Score5 - 不設置值以保留下拉選單
+            None,  # Score5
             ai_prompts[2],  # AI Prompt3
             ai_contents[2],  # AI Content3
-            None,  # Score6 - 不設置值以保留下拉選單
+            None,  # Score6
             ai_prompts[3],  # AI Prompt4
             ai_contents[3],  # AI Content4
-            None,  # Score7 - 不設置值以保留下拉選單
+            None,  # Score7
             ai_prompts[4],  # AI Prompt5
             ai_contents[4],  # AI Content5
-            None   # Score8 - 不設置值以保留下拉選單
+            None  # Score8
         ]
         
         # 檢查並更新表頭
@@ -223,6 +225,8 @@ class GoogleSheetsManager:
             'Timestamp',
             'Company Name',
             'Model Usage',
+            'Category Prompt',
+            'Category Content',
             'Web Prompt1',
             'Web Content1',
             'Score',
@@ -250,7 +254,7 @@ class GoogleSheetsManager:
         ]
         
         # 獲取第一行來檢查表頭
-        header_range = "'Prompt Engineering'!A1:AA1"  # 更新範圍以包含所有列
+        header_range = "'Prompt Engineering'!A1:AC1"  # 更新範圍以包含所有列
         try:
             header_result = service.spreadsheets().values().get(
                 spreadsheetId=self.SPREADSHEET_ID,
@@ -275,7 +279,7 @@ class GoogleSheetsManager:
             ).execute()
         
         # 添加數據行
-        range_name = "'Prompt Engineering'!A:AA"  # 更新範圍以包含所有列
+        range_name = "'Prompt Engineering'!A:AC"  # 更新範圍以包含所有列
         value_input_option = 'USER_ENTERED'
         insert_data_option = 'INSERT_ROWS'
         
