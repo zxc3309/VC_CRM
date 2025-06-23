@@ -41,8 +41,8 @@ class DealAnalyzer:
             "AI Content5": "",
             "deck_data": "",
             "message_text": "",
-            "ai_model": "gpt-4.1",  # 預設值
-            "search_model": "gpt-4.1"  # 預設值
+            "ai_model": "",  # 預設值
+            "search_model": ""  # 預設值
         }
         
         # 初始化 OpenAI 客戶端
@@ -99,6 +99,30 @@ class DealAnalyzer:
         """
         try:
             self.logger.info("Analyzing deal information...")
+
+                    # 初始化 input_data 字典
+            self.input_data = {
+                "Web Prompt1": "",
+                "Web Content1": "",
+                "Web Prompt2": "",
+                "Web Content2": "",
+                "Web Prompt3": "",
+                "Web Content3": "",
+                "AI Prompt1": "",
+                "AI Content1": "",
+                "AI Prompt2": "",
+                "AI Content2": "",
+                "AI Prompt3": "",
+                "AI Content3": "",
+                "AI Prompt4": "",
+                "AI Content4": "",
+                "AI Prompt5": "",
+                "AI Content5": "",
+                "deck_data": "",
+                "message_text": "",
+                "ai_model": "",  # 預設值
+                "search_model": ""  # 預設值
+            }
 
             # 清空快取，即時讀取 ai_model 和 search_model
             self.prompt_manager.prompts = {}
@@ -452,7 +476,7 @@ class DealAnalyzer:
             response = await self.openai_client.responses.create(
                 model=self.search_model,
                 tools=[{
-                    "type": "web_search_preview",
+                    "type": "web_search",
                     "search_context_size": "medium"
                 }],
                 input=query
