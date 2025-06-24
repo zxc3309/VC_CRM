@@ -76,6 +76,7 @@ class DeckBrowser:
         patterns = [
             r'password[:：]?\s*([\w\-!@#$%^&*()_+=]+)',
             r'passwords[:：]?\s*([\w\-!@#$%^&*()_+=]+)',
+            r'pw[:：]?\s*([\w\-!@#$%^&*()_+=]+)',
             r'密碼[:：]?\s*([\w\-!@#$%^&*()_+=]+)'
         ]
         for pattern in patterns:
