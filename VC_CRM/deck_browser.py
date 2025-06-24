@@ -49,6 +49,7 @@ class DeckBrowser:
         self.browser = None
         self.email = os.getenv("DOCSEND_EMAIL")  # 替換為您的電子郵件
         self.path_helper = PathHelper()
+        self.docsend_password = None  # 新增：儲存 DocSend 密碼
 
     #決定流程
     SourceType = Literal["docsend", "attachment", "gdrive", "website", "unknown"]
@@ -69,7 +70,22 @@ class DeckBrowser:
         else:
             return "unknown"
     
+    def extract_password_from_message(self, message: str) -> str:
+        """從 message 中擷取 password: xxx 或 密碼: xxx"""
+        import re
+        patterns = [
+            r'password[:：]?\s*([\w\-!@#$%^&*()_+=]+)',
+            r'密碼[:：]?\s*([\w\-!@#$%^&*()_+=]+)'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, message, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        return None
+
     async def process_input(self, message: str, attachments: Optional[list] = None):
+        # 先擷取密碼
+        self.docsend_password = self.extract_password_from_message(message)
         source_type = self.detect_source_type(message, attachments)
         results = []  # 用於存儲所有結果
 
@@ -391,6 +407,18 @@ class DeckBrowser:
                     await page.locator('button:has-text("Continue")').click(timeout=1000)
                 except Exception as e:
                     self.logger.warning(f"提交按鈕點擊失敗: {e}")
+                await page.wait_for_load_state('networkidle', timeout=30000)
+
+            # 新增：檢查是否需要密碼
+            password_input = await page.query_selector('input[type="password"]')
+            if password_input and self.docsend_password:
+                logger.info("需要填寫 DocSend 密碼，已自動填入")
+                await page.type('input[type="password"]', self.docsend_password, delay=random.uniform(100, 200))
+                try:
+                    await page.locator('button:has-text("Continue")').wait_for(state='visible', timeout=1000)
+                    await page.locator('button:has-text("Continue")').click(timeout=1000)
+                except Exception as e:
+                    self.logger.warning(f"密碼提交按鈕點擊失敗: {e}")
                 await page.wait_for_load_state('networkidle', timeout=30000)
 
             # 滾動頁面以加載所有內容
