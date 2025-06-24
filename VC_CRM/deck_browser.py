@@ -75,6 +75,7 @@ class DeckBrowser:
         import re
         patterns = [
             r'password[:：]?\s*([\w\-!@#$%^&*()_+=]+)',
+            r'passwords[:：]?\s*([\w\-!@#$%^&*()_+=]+)',
             r'密碼[:：]?\s*([\w\-!@#$%^&*()_+=]+)'
         ]
         for pattern in patterns:
@@ -86,6 +87,7 @@ class DeckBrowser:
     async def process_input(self, message: str, attachments: Optional[list] = None):
         # 先擷取密碼
         self.docsend_password = self.extract_password_from_message(message)
+        self.logger.info(f"已擷取密碼: {self.docsend_password}" )
         source_type = self.detect_source_type(message, attachments)
         results = []  # 用於存儲所有結果
 
