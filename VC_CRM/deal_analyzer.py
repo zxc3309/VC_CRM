@@ -173,6 +173,13 @@ class DealAnalyzer:
                         self.input_data[f"AI Prompt{i}"] = "Skipped - Founder names already found"
                         self.input_data[f"AI Content{i}"] = json.dumps({"skipped": True, "reason": "Founder names already found"}, ensure_ascii=False)
                         break
+                
+                # Skip one Web_prompt slot if founder names are already found
+                for i in range(1, 4):
+                    if not self.input_data[f"Web Prompt{i}"]:
+                        self.input_data[f"Web Prompt{i}"] = "Skipped - Founder names already found"
+                        self.input_data[f"Web Content{i}"] = json.dumps({"skipped": True, "reason": "Founder names already found"}, ensure_ascii=False)
+                        break
             
             self.logger.info(f"找到創辦人名稱: {founder_names}")
             
