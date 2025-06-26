@@ -489,32 +489,61 @@ class DealAnalyzer:
             self.logger.info("開始網絡搜索")
             self.logger.info("==================================================")
             self.logger.info(f"搜索查詢: {query}")
-            
             self.logger.info(f"使用模型: {self.search_model}")
             
-            # 執行搜索
-            response = await self.openai_client.responses.create(
-                model=self.search_model,
-                tools=[{
-                    "type": "web_search",
-                    "search_context_size": "medium"
-                }],
-                input=query
-            )
-            
-            # 獲取搜索結果
+            # 根據模型類型選擇不同的 API 調用方式
+            model_lower = self.search_model.lower()
             text_content = ""
             citations = []
             
-            # 檢查回應格式
-            if hasattr(response, 'output_text'):
-                text_content = response.output_text
-            elif hasattr(response, 'choices') and response.choices:
-                text_content = response.choices[0].message.content
-            
-            # 檢查是否有引用
-            if hasattr(response, 'citations'):
-                citations = response.citations
+            if model_lower.startswith("o3"):
+                # O3 / o3-mini / o3-pro 模型使用 Format2
+                self.logger.info("使用 Format2")
+                response = await self.openai_client.responses.create(
+                    model=self.search_model,
+                    input=[{"role": "user", "content": query}],
+                    reasoning={
+                        "effort": "medium",
+                        "summary": "auto"
+                    },
+                    store=True
+                )
+                
+                # 獲取搜索結果
+                if hasattr(response, 'output_text'):
+                    text_content = response.output_text
+                elif hasattr(response, 'output') and isinstance(response.output, list) and response.output:
+                    text_content = str(response.output[0])
+                
+                # 檢查是否有引用
+                if hasattr(response, 'citations'):
+                    citations = response.citations
+                    
+            else:
+                # GPT-4/3.5 使用 chat.completions.create API
+                self.logger.info("使用 Format1")
+                
+                response = await self.openai_client.responses.create(
+                    model=self.search_model,
+                    input=[{"role": "user", "content": query}],
+                    tools=[{
+                            "type": "web_search",
+                            "search_context_size": "medium"
+                            }],
+                    temperature=0,
+                    top_p=1,
+                    store=True
+                    )
+                
+                # 獲取搜索結果
+                if hasattr(response, 'output_text'):
+                    text_content = response.output_text
+                elif hasattr(response, 'output') and isinstance(response.output, list) and response.output:
+                    text_content = str(response.output[0])
+                
+                # 檢查是否有引用
+                if hasattr(response, 'citations'):
+                    citations = response.citations
             
             # 更新 input_data
             # 找到第一個空的 Web Prompt 位置
@@ -543,6 +572,11 @@ class DealAnalyzer:
             self.logger.error(f"錯誤類型: {type(e)}")
             self.logger.error(f"錯誤詳情: {str(e)}")
             self.logger.error("完整錯誤信息:", exc_info=True)
+            
+            return {
+                'content': f"搜索失敗: {str(e)}",
+                'citations': []
+            }
 
     async def _get_completion(self, prompt: str, result_type: str = "general") -> Dict[str, Any]:
         """使用 OpenAI API 獲取完成結果"""
