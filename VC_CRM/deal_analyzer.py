@@ -74,7 +74,7 @@ class DealAnalyzer:
             return None
             
         # 使用正則表達式匹配各種可能的文檔連結
-        docsend_pattern = r'https://docsend\.com/view/[a-zA-Z0-9]+'
+        docsend_pattern = r'https?://(?:www\.)?docsend\.com/[^\s)"}]+'
         gdrive_pattern = r'https://(?:drive|docs)\.google\.com/(?:file/d/|presentation/)[\w\-/]+'
         notion_pattern = r'https://(?:www\.)?notion\.so/[a-zA-Z0-9\-]+'
         
@@ -213,8 +213,8 @@ class DealAnalyzer:
             # 確保 Web Prompt/Content 結構完整
             for i in range(1, 4):
                 if not self.input_data[f"Web Prompt{i}"]:
-                    self.input_data[f"Web Prompt{i}"] = f"General search for {company_name}"
-                    self.input_data[f"Web Content{i}"] = "No additional information found"
+                    self.input_data[f"Web Prompt{i}"] = f"Error detected, please view log"
+                    self.input_data[f"Web Content{i}"] = "Error detected, please view log"
             
             # 提取文檔連結
             deck_link = self.extract_deck_link(message_text)
@@ -273,7 +273,7 @@ class DealAnalyzer:
             # 使用 prompt_manager 獲取搜索查詢
             search_queries = [
                 self.prompt_manager.get_prompt_and_format(
-                    'search_founder_names',
+                    'search_founder_names_web',
                     company_name=company_name
                 ),
             ]
@@ -309,14 +309,17 @@ class DealAnalyzer:
                 result = json.loads(completion.choices[0].message.content)
                 founders = result.get('founders', [])
                 
-                if founders:
-                    self.logger.info(f"通過查詢 '{query}' 找到創始人信息")
-                    for founder in founders:
+                # 修正：同時支援 founders 為 dict list 或 string list
+                for founder in founders:
+                    if isinstance(founder, dict):
                         name = founder.get('name')
                         title = founder.get('title', 'N/A')
-                        if name and name not in found_info['founder_names']:
-                            found_info['founder_names'].append(name)
-                            found_info['founder_titles'].append(title)
+                    else:
+                        name = founder
+                        title = 'N/A'
+                    if name and name not in found_info['founder_names']:
+                        found_info['founder_names'].append(name)
+                        found_info['founder_titles'].append(title)
                     break  # 如果找到創始人，停止搜索
             
             return found_info
@@ -330,7 +333,8 @@ class DealAnalyzer:
             # 使用 prompt_manager 獲取搜索查詢
             search_query = self.prompt_manager.get_prompt_and_format(
                 'get_company_search_query',
-                company_name=company_name
+                company_name=company_name,
+                founder_names=founder_names
             )
             
             # 執行網絡搜索
