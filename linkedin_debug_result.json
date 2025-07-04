@@ -1,0 +1,53 @@
+{
+  "linkedin_url": "https://www.linkedin.com/in/noahchonlee?miniProfileUrn=urn%3Ali%3Afs_miniProfile%3AACoAAC67JSkBd5xZphZ_PSKaUZSdaUiA6Eb7Xvw",
+  "about": "Let's connect cultural and technological knowledge to empower community with the right tools to take care of one another.\n\nCareer recap:\n- Professional juggler for audiences of >10,000 since the age of 10\n- Motivational keynote speaker at a Fortune 500 company by age 18\n- Delivered solar power to the Amazon Jungle\n- Commanded 30 Marine Corps midshipmen in Camp Pendleton\n- Drove a nuclear submarine\n- Managed a team of 70 people at a startup with a senior researcher from OpenAI\n- Delivered medical supplies to the front line of Ukraine used to save multiple lives\n- Organizer of a conference with Vitalik Buterin, Balaji Srinivasan, Robin Hanson as speakers\n- Managed a >1M grant program for the Zuzalu ecosystem\n\nNow building normie.tech, the checkout page that pays you in stablecoins. \n\nInterests: Crowdfunding, AI, Indigenous Rights, Mutualism, Network Societies, Juggling, Fire-eating",
+  "experience": [
+    {
+      "job_title": "Co-Founder",
+      "company": "Normie Tech · Full-time",
+      "period": "Oct 2024 - Present · 10 mos",
+      "location": "San Francisco Bay Area",
+      "description": "Created a credit card checkout page that forwards customer payments as stablecoins to your wallet or smart contract.Profitable by month 4."
+    },
+    {
+      "job_title": "Founder",
+      "company": "viaPrize · Full-time",
+      "period": "Jun 2023 - Jan 2025 · 1 yr 8 mos",
+      "location": null,
+      "description": "Led a team of 5 building a blockchain based crowdfunded prize platform. Impact of our prizes: multiple lives saved, kids shelter funded, >10 open source projects winning including an app with >10,000 downloads"
+    },
+    {
+      "job_title": "Chief Human Resources Officer",
+      "company": "Multi Technologies · Full-time",
+      "period": "Aug 2022 - Feb 2023 · 7 mos",
+      "location": "San Francisco, California, United States · On-site",
+      "description": "Dropped out of UC Berkeley and the Marines when I couldn't take care of my loved ones in Ecuador and afford rent. With no traditional credentials or offers, befriended a senior researcher at OpenAI who hired me when he launched his startup. Built and managed a team of 70 people for our data labeling operations. Developed systems from scratch for recruiting, onboarding, retention and pay, and quality control then trained a team of managers to take it over. Organized events, ran cold outreach, and joined sales calls."
+    },
+    {
+      "job_title": "Sole Proprietor",
+      "company": "Master Fool Productions",
+      "period": "Jun 2019 - Oct 2022 · 3 yrs 5 mos",
+      "location": "Global",
+      "description": "Professional juggler and motivational speaker. Learned to run my business including sending invoices, cold outreach, and coordinating hiring other performers. Achieved goal of earning $6,000 during the first summer of starting and used the funds to backpack through two dozen countries. Street performed around the world. Joined a fire juggling troupe. MC for shows with the West African Slyboots Circus. Scaled up from small gigs at parties to making $1500/hr as a motivational speaker and presenting for Fortune 500 companies."
+    },
+    {
+      "job_title": "NROTC Marine Corps Midshipman",
+      "company": "Naval ROTC Unit UC Berkeley",
+      "period": "Aug 2021 - Aug 2022 · 1 yr 1 mo",
+      "location": "Berkeley, California, United States",
+      "description": "Won the selective NROTC Marine Corps full ride scholarship. Commanded a platoon of 30 Midshipman at Camp Pendleton. Drove an SSGN submarine with nuclear weapons on board. Mentored by enlisted soldiers and officers with wartime experience in how to operate a team united in an urgent objective while under pressure"
+    }
+  ],
+  "education": [
+    {
+      "school": "University of California, Berkeley",
+      "degree": "Sociology",
+      "period": null
+    },
+    {
+      "school": "Daemen University",
+      "degree": null,
+      "period": null
+    }
+  ]
+}

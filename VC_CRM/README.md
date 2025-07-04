@@ -67,7 +67,7 @@ python install.py
 
 4. 建立 Google Sheets 與 Docs 權限：
    - 創建 "提示詞" 的工作表，並授權給你的 Service Account，格式請參考（https://docs.google.com/spreadsheets/d/1Y4xi0EvZNm20iDnUGrdG4RFoM5AoNz1sqNFQw1-kjnw/edit?gid=422006238#gid=422006238）
-   - 創建新的 Google Sheets，並將其命名填充至"提示詞"中的"main_sheet_name"
+   - 創建新的 Google Sheets，並將其 TAB 名稱填充至"提示詞"中的"main_sheet_name"
    - 創建名為 "Prompt Engineering" 的工作表，並授權給你的 Service Account
    - 創建新的 Google Drive Folder，並授權給你的 Service Account
    - 分享給你的 Google Service Account 郵箱（編輯權限）
@@ -195,7 +195,7 @@ python main.py
 
 ## 環境設定
 
-### 必要軟體安裝
+### 必要軟體安裝（線上部屬可以省略）
 
 1. **Python 相依套件**
    ```bash
