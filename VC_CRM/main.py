@@ -122,9 +122,16 @@ class DealSourcingBot:
             try:
                 # Analyze the deal with the summary
                 analysis_result = await self.deal_analyzer.analyze_deal(message_text, deck_data)
-                deal_data = analysis_result["deal_data"]
-                input_data = analysis_result["input_data"]
-                logger.info(f"Analysis complete. Deal data: {str(deal_data)[:100]}...")  # Log first 100 chars
+                if "error" in analysis_result:
+                    await processing_msg.edit_text(
+                        f"❌ {analysis_result['error']}\n\n請提供更明確的公司資訊或補充 pitch deck。"
+                    )
+                    logger.warning(f"Early termination: {analysis_result['error']}")
+                    return
+                else:
+                    deal_data = analysis_result["deal_data"]
+                    input_data = analysis_result["input_data"]
+                    logger.info(f"Analysis complete. Deal data: {str(deal_data)[:100]}...")  # Log first 100 chars
             except Exception as e:
                 logger.error(f"Error in deal analysis: {str(e)}")
                 logger.error(traceback.format_exc())

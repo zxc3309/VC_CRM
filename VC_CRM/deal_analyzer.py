@@ -148,15 +148,21 @@ class DealAnalyzer:
             self.input_data["deck_data"] = deck_data
 
             # 從 OCR 文本中提取公司名稱
-            company_name = ""
-            founder_names = []
-            funding_info = ""
-            
-            # 使用 AI 從 OCR 文本中提取初始信息
-            initial_info = await self._extract_initial_info(message_text, deck_data)
+            try:
+                initial_info = await self._extract_initial_info(message_text, deck_data)
+            except Exception as e:
+                self.logger.warning(str(e))
+                return {
+                    "error": str(e),
+                    "deal_data": {},
+                    "input_data": self.input_data
+                }
             company_name = initial_info.get("company_name", "")
             founder_names = initial_info.get("founder_names", [])
             funding_info = initial_info.get("funding_info", "")
+            
+            # 取得 industry_info
+            industry_info = initial_info.get("Industry_Info", "")
             
             # 如果未找到公司名稱，返回有限的結果
             if not company_name:
@@ -170,7 +176,7 @@ class DealAnalyzer:
             
             # Search for additional founder names if not found
             if not founder_names:
-                founder_info = await self._search_founder_names(company_name, deck_data)
+                founder_info = await self._search_founder_names(company_name, deck_data, industry_info)
                 founder_names = founder_info.get("founder_names", [])
             else:
                 # Skip one AI_prompt slot if founder names are already found
@@ -190,7 +196,7 @@ class DealAnalyzer:
             self.logger.info(f"找到創辦人名稱: {founder_names}")
             
             #尋找更多公司信息
-            company_info = await self._get_company_details(company_name, founder_names, message_text, deck_data)
+            company_info = await self._get_company_details(company_name, founder_names, message_text, deck_data, industry_info)
             company_category = company_info.get("company_category", "N/A")
             self.logger.info(f"獲取到公司 {company_name} 的額外信息")
 
@@ -199,7 +205,7 @@ class DealAnalyzer:
             if founder_names:
                 # 只處理第一位創辦人（簡單解決方案）
                 first_founder = founder_names[0]
-                founder_info = await self._research_founder_background(first_founder, company_name, deck_data)
+                founder_info = await self._research_founder_background(first_founder, company_name, deck_data, industry_info, message_text)
             else:
                 # 如果沒有找到創辦人，生成空的創辦人信息
                 founder_info = {
@@ -260,19 +266,17 @@ class DealAnalyzer:
                 message_text=message_text,
                 deck_data=deck_data
             )
-            
-            return await self._get_completion(prompt, "initial_info")
+            result = await self._get_completion(prompt, "initial_info")
+            # 如果 company_name 抓不到，raise Exception
+            if not result.get("company_name"):
+                raise ValueError("❌ 無法從訊息中擷取公司名稱，流程終止。請提供更明確的公司資訊。")
+            return result
         except Exception as e:
             self.logger.error(f"提取初始信息時出錯: {str(e)}")
             self.logger.error(traceback.format_exc())
-            return {
-                "company_name": "",
-                "founder_names": [],
-                "company_info": "",
-                "funding_info": ""
-            }
+            raise  # 讓 analyze_deal 捕捉
 
-    async def _search_founder_names(self, company_name: str, deck_data: str) -> Dict[str, Any]:
+    async def _search_founder_names(self, company_name: str, deck_data: str, industry_info: str) -> Dict[str, Any]:
         try:
             self.logger.info(f"搜索 {company_name} 的創始人")
             
@@ -280,7 +284,8 @@ class DealAnalyzer:
             search_queries = [
                 self.prompt_manager.get_prompt_and_format(
                     'search_founder_names_web',
-                    company_name=company_name
+                    company_name=company_name,
+                    industry_info=industry_info
                 ),
             ]
             
@@ -300,7 +305,8 @@ class DealAnalyzer:
                     'search_founder_names',
                     company_name=company_name,
                     search_content=search_results.get('content', ''),
-                    deck_data=deck_data
+                    deck_data=deck_data,
+                    industry_info=industry_info
                 )
                 
                 completion = await self.openai_client.chat.completions.create(
@@ -334,13 +340,14 @@ class DealAnalyzer:
             self.logger.error(f"搜索創始人時出錯: {str(e)}", exc_info=True)
             return {'founder_names': [], 'founder_titles': []}
 
-    async def _get_company_details(self, company_name: str, founder_names: list, message_text: str, deck_data: str) -> Dict[str, Any]:
+    async def _get_company_details(self, company_name: str, founder_names: list, message_text: str, deck_data: str, industry_info: str) -> Dict[str, Any]:
         try:
             # 使用 prompt_manager 獲取搜索查詢
             search_query = self.prompt_manager.get_prompt_and_format(
                 'get_company_search_query',
                 company_name=company_name,
-                founder_names=founder_names
+                founder_names=founder_names,
+                industry_info=industry_info
             )
             
             # 執行網絡搜索
@@ -353,7 +360,8 @@ class DealAnalyzer:
                 founder_names=founder_names,
                 message_text=message_text,
                 deck_data=deck_data,
-                search_content=search_content
+                search_content=search_content,
+                industry_info=industry_info
             )
             
             company_info = await self._get_completion(prompt, "company_details")
@@ -425,23 +433,30 @@ class DealAnalyzer:
                 "company_category": "N/A"
             }
 
-    async def _research_founder_background(self, founder_name: str, company_name: str, deck_data: str) -> Dict[str, Any]:
+    async def _research_founder_background(self, founder_name: str, company_name: str, deck_data: str, industry_info: str, message_text: str) -> Dict[str, Any]:
         try:
             self.logger.info(f"研究 {founder_name} 的背景")
             # 先進行一次 web search
-            web_query = f"{founder_name} {company_name} 創辦人背景 {deck_data[:100]}"
+            web_query = f"{founder_name} {company_name} {industry_info} 創辦人背景 {deck_data[:100]}"
             web_result = await self._web_search(web_query)
             search_content = web_result.get('content', '') if web_result else ''
 
             # 直接呼叫 linkedin_sourcing 取得結構化 dict
             profile_url, ln_structured = await get_linkedin_profile_html(company_name, founder_name, return_structured=True)
+            # 1. LinkedIn profile name 檢查
+            profile_name = ln_structured.get("name") if ln_structured else None
+            if not profile_name or profile_name.strip().lower() != founder_name.strip().lower():
+                self.logger.warning(f"LinkedIn profile name '{profile_name}' does not match founder_name '{founder_name}'，停止 LinkedIn Research。")
+                ln_structured = {}
             # ln_structured 會有 about/experience/education 等欄位
             prompt = self.prompt_manager.get_prompt_and_format(
                 'research_founder_background',
                 founder_name=founder_name,
                 linkedin_structured=ln_structured,
                 deck_data=deck_data,
-                search_content=search_content
+                search_content=search_content,
+                industry_info=industry_info,
+                message_text=message_text
             )
             founder_info = await self._get_completion(prompt, "founder_background")
             return {
@@ -621,11 +636,12 @@ if __name__ == "__main__":
     async def main():
         # 測試輸入
         message_text = """
-        Normie Tech lets your customers pay you in stablecoins without an onramp
-        Before this I managed a million dollar grant program for Vitalik and saw the number 1 issue repeatedly holding back web3: sending customers to exchanges where >3/4 give up. We built a solution for our own platform and other projects asked to hire us to do the same.
-        Profitable from set up fees by month 4, raising a pre-seed to move faster.
-        Here is the deck:
-        https://docsend.com/view/sikphsrjbwpz8h82
+        Superform
+        CEO is Vikram Arun
+
+        https://docsend.com/view/u89ffgabbsvugtud/d/gnakfcdzn52uvmq5
+
+        pw: wealthy2025
         """
         deck_data = """'[Slide 3]\ni\nody |\n| * [I\n\nNormie Tech\n\nNo KYC fiat to stablecoin payments\n\n\n\n[Slide 6]\nPROBLEM\n\n>50M businesses struggle to\nreceive non-inflationary\ncurrency from their customers\n\nWe experienced this >)\n\nprevious startup\n\nTeaching customers to send\nStablecoins is too much friction ———\n\n=>\n\nNormie Tech\n\n\n[Slide 9]\nie Normie Tech\n\nDID YOU KNOW...\n\nThere is a way to send stablecoins\nwithout owning crypto or using an\nexchange!\n\n\n[Slide 12]\nSOLUTION\n\nCustomer Sees\n\nBilling information\n\nisiness purchase\n\nUnited States of America\n\nAlabama\n\nPayment Method\n\nVISA @®\n\nhave a coupon code\n\n| touches crypto so }\n! they\n\nSender never\n\ndon't KYC \'\n\nVY Payment Sent\n\nIN\n\n¢\n\niS\n"Se\n\nA checkout page that\nforwards card payments\nas stablecoins\n\nReceiver Sees\n\nTo Amount Token\n\nOxF7d4668d...1e8129DD6 100\n\nNormie Tech\n\n© USD Coin (USDC)\n\n\n[Slide 15]\nie Normie Tech\n\nWHAT MAKES US UNIQUE\n\nPe scsesersannonsy\nSS\nSS =D\n\n\n\n[Slide 18]\ni Normie Tech\n\nTRACTION\na4 i—t\n\n~ $70,000 $50,000 Oct 2024\nFounding date\n\nProcessed ARR Bootstrapped until March\n\nWe're just getting started\n\n\n[Slide 21]\nie Normie Tech\n\nMARKET\n\nIn organic stablecoin payments in 2023\n\nGrowth YOY\n\n2023 2030 2035\n\n\n[Slide 24]\nGTM\n\n-Web3 platforms\n-Software developers\n\n-Hotels in high inflation countries\n\na\n\n-Marketing to all businesses that want payments in stablecoins\n\nNormie Tech\n\n\n[Slide 27]\nie Normie Tech\n\nINSIGHTS FROM 8 PILOTS\n\nHow to Address Chargebacks with a Legally Binding 2FA\n\nHow To Go Where Stripe Cannot with Stablecoins Surpassing\n"Convert to Local Currency" Regulations\n\nHow Customers Are Different than Remitters - They Care\nMore About Ease and Familiarity than Fees\n\n\n[Slide 30]\nMEET THE TEAM\n\nWorked together for a\nyear on a previous\nblockchain startup\n\nNoah Chon Lee - CEO\n\n-Built a team of 70 as a founding\nmember of a startup with a senior\nresearcher from OpenAl\n\n-Managed a1M grant program for\nVitalik Buterin and repeatedly saw\nthe #1 issue of onboarding limiting\nhundreds of projects\n\n7 ee 2\ng a .-\nCat « ee-. -.\nce. 4 —\noe. ees \' Hi ds i qf\n\nDipanshu Singh - CTO\n\n-Built a top 3 trending app in\nNigeria at age 14\n\n-First job at a software firm by 15\n-Co-authored a blockchain\nresearch paper by 17\n\n-Winner of 5 blockchain\nhackathons\n\n-Founding engineer of 2 startups\n\nie Normie Tech\n\nNithin Varma\nSenior Developer\n\nAryan Tiwari\nSenior Developer\n\n\n[Slide 33]\nNormie Tech\n\nWHAT OUR CLIENTS SAY\n\nY@e Will Ruddick | Grassroots Economics\n\' last seen recently\n\ndude 04:54 aM\n\nit\'s all working 64-55 ayy Wednesday\n\nit\'s FUCKING amazing 94:55 ayy\n\nOMY 04:55 AM\nOMY 04:55 AM\nOMY 04:55 AM\n\nWOW 04:55 AM\n\nneed to do some announcements .... so excited 94-55 ayy\n\nthanks so much! 9y-55 ayy\n\nHELL YEAH! 99-99 am\n'}]"""
         analyzer = DealAnalyzer(prompt_manager=GoogleSheetPromptManager())

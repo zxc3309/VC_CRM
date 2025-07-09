@@ -34,6 +34,12 @@ logger.info(f"Final Tesseract path: {pytesseract.pytesseract.tesseract_cmd}")
 
 logger.setLevel(logging.INFO)
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[logging.StreamHandler()]
+)
+
 # 在檔案開頭初始化 prompt_manager
 prompt_manager = GoogleSheetPromptManager()
 
@@ -400,29 +406,60 @@ class DeckBrowser:
             await asyncio.sleep(random.uniform(2, 5))
             
             # 檢查是否需要填寫電子郵件
+            self.logger.info("[DocSend] 準備檢查是否需要填寫 email")
             email_input = await page.query_selector('input[type="email"]')
             if email_input:
-                logger.info("需要填寫電子郵件才能訪問文檔")
+                self.logger.info("[DocSend] 偵測到 email 輸入框，準備填寫 email")
                 await page.type('input[type="email"]', self.email, delay=random.uniform(100, 200))
+                self.logger.info(f"[DocSend] 已輸入 email: {self.email}")
+                # 填完 email 後找密碼 input，支援多種 selector
+                selectors = [
+                    'input.js-auth-form_passcode',
+                    'input[name="link_auth_form[passcode]"]',
+                    'input[id="link_auth_form_passcode"]',
+                    'input[type="password"]'
+                ]
+                password_input = None
+                used_selector = None
+                for sel in selectors:
+                    try:
+                        password_input = await page.query_selector(sel)
+                        if password_input:
+                            self.logger.info(f"[DocSend] 用 selector {sel} 找到密碼欄位")
+                            used_selector = sel
+                            break
+                    except Exception as e:
+                        self.logger.warning(f"[DocSend] 用 selector {sel} 找密碼欄位失敗: {e}")
+                if password_input and self.docsend_password:
+                    await page.type(used_selector, self.docsend_password, delay=random.uniform(100, 200))
+                    self.logger.info(f"[DocSend] 已用 {used_selector} 填入密碼: {self.docsend_password}")
+                else:
+                    self.logger.warning("[DocSend] 沒有找到可填寫的密碼欄位")
+                # 填完密碼再按 Continue
                 try:
-                    logger.info("嘗試點擊提交按鈕")
+                    btn = page.locator('button:has-text("Continue")')
+                    await btn.click()
+                    self.logger.info("[DocSend] 已點擊 Continue (email+password)")
+                    try:
+                        await page.wait_for_load_state('networkidle', timeout=8000)
+                    except Exception as e:
+                        self.logger.warning(f"[DocSend] 點擊 Continue 後等待 networkidle 超時: {e}，改用 sleep 3 秒")
+                        await page.wait_for_timeout(3000)
+                except Exception as e:
+                    self.logger.warning(f"[DocSend] 提交 email+password 按鈕點擊失敗: {e}")
+                self.logger.info("[DocSend] email+password 流程結束，進入下一步")
+            else:
+                # 沒有 password input，才按 Continue
+                try:
+                    self.logger.info("[DocSend] 沒有偵測到 password 輸入框，準備點擊 Continue 按鈕 (email only)")
                     await page.locator('button:has-text("Continue")').wait_for(state='visible', timeout=1000)
                     await page.locator('button:has-text("Continue")').click(timeout=1000)
+                    self.logger.info("[DocSend] 已點擊 Continue (email only)")
                 except Exception as e:
-                    self.logger.warning(f"提交按鈕點擊失敗: {e}")
+                    self.logger.warning(f"[DocSend] 提交 email 按鈕點擊失敗: {e}")
                 await page.wait_for_load_state('networkidle', timeout=30000)
-
-            # 新增：檢查是否需要密碼
-            password_input = await page.query_selector('input[type="password"]')
-            if password_input and self.docsend_password:
-                logger.info("需要填寫 DocSend 密碼，已自動填入")
-                await page.type('input[type="password"]', self.docsend_password, delay=random.uniform(100, 200))
-                try:
-                    await page.locator('button:has-text("Continue")').wait_for(state='visible', timeout=1000)
-                    await page.locator('button:has-text("Continue")').click(timeout=1000)
-                except Exception as e:
-                    self.logger.warning(f"密碼提交按鈕點擊失敗: {e}")
-                await page.wait_for_load_state('networkidle', timeout=30000)
+                self.logger.info("[DocSend] email only 流程結束，進入下一步")
+            # --- 密碼自動填寫結束 ---
 
             # 滾動頁面以加載所有內容
             self.logger.info("開始滾動頁面以加載所有內容")
@@ -662,7 +699,7 @@ class DeckBrowser:
         
         try:
             async with async_playwright() as pw:
-                browser = await pw.chromium.launch(headless=True)
+                browser = await pw.chromium.launch(headless=False)
                 if not browser:
                     self.logger.error("❌ 無法創建瀏覽器實例")
                     return [{"error": "❌ 無法創建瀏覽器實例"}]
@@ -1665,12 +1702,12 @@ if __name__ == "__main__":
 
     async def main():
         message = """
-    Normie Tech lets your customers pay you in stablecoins without an onramp
-    Before this I managed a million dollar grant program for Vitalik and saw the number 1 issue repeatedly holding back web3: sending customers to exchanges where >3/4 give up. We built a solution for our own platform and other projects asked to hire us to do the same.
-    Profitable from set up fees by month 4, raising a pre-seed to move faster.
-    Here is the deck:
-    https://docsend.com/view/sikphsrjbwpz8h82
+        Superform
+        CEO is Vikram Arun
 
+        https://docsend.com/view/u89ffgabbsvugtud/d/gnakfcdzn52uvmq5
+
+        pw: wealthy2025
         """
         
         reader = DeckBrowser()
