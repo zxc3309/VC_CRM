@@ -146,6 +146,12 @@ class DocManager:
         suggested_questions = self.format_questions(await self.suggest_questions_with_gpt(deal_data, input_data))
         # 獲取 deck_link，如果是 N/A 則不創建超連結
         deck_link = deal_data.get("Deck Link", "N/A")
+        # Reference Links 處理
+        ref_links = deal_data.get("Reference Links", [])
+        if isinstance(ref_links, list):
+            ref_links_str = "\n".join(ref_links) if ref_links else "N/A"
+        else:
+            ref_links_str = str(ref_links) if ref_links else "N/A"
 
         doc_title = f"{company_name} Log"
 
@@ -186,7 +192,8 @@ class DocManager:
                 ("Founder Education", founder_education),
                 ("Founder Achievements", founder_achievements),
                 ("Suggested Questions", suggested_questions),
-                ("Deck Link：", deck_link)
+                ("Deck Link：", deck_link),
+                ("Reference Link：", ref_links_str)
             ]
 
             # 插入請求集合

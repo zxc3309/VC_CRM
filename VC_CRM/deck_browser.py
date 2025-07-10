@@ -40,15 +40,15 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()]
 )
 
-# 在檔案開頭初始化 prompt_manager
-prompt_manager = GoogleSheetPromptManager()
+# 延遲初始化 prompt_manager
+prompt_manager = None
 
 class DeckBrowser:
     
     def __init__(self, prompt_manager: GoogleSheetPromptManager = None):
         """Initialize the DeckBrowser."""
-        # 使用傳入的 prompt_manager 或建立新的
-        self.prompt_manager = prompt_manager or GoogleSheetPromptManager()
+        # 延遲初始化 prompt_manager，避免啟動時網路問題
+        self.prompt_manager = prompt_manager
         
         # 設置日誌
         self.logger = logging.getLogger(__name__)
@@ -457,7 +457,7 @@ class DeckBrowser:
                     self.logger.info("[DocSend] 已點擊 Continue (email only)")
                 except Exception as e:
                     self.logger.warning(f"[DocSend] 提交 email 按鈕點擊失敗: {e}")
-                await page.wait_for_load_state('networkidle', timeout=30000)
+                await page.wait_for_load_state('networkidle', timeout=10000)
                 self.logger.info("[DocSend] email only 流程結束，進入下一步")
             # --- 密碼自動填寫結束 ---
 
@@ -688,414 +688,51 @@ class DeckBrowser:
             return False
 
     async def run_generic_link_analysis(self, message: str) -> List[Dict[str, Any]]:
-        """分析一般網址（包括公司官網）"""
-        urls = re.findall(r'https?://[^\s\)\"]+', message)
+        """分析一般網址（包括公司官網），只回傳 summary 統整內容，不回傳 sources"""
+        urls = re.findall(r'https?://[^\s\)"]+', message)
         results = []
+        summaries = []
         
         if not urls:
             return [{"error": "❌ 未找到任何有效的網址"}]
         
         self.logger.info(f"找到 {len(urls)} 個網址需要處理")
         
-        try:
-            async with async_playwright() as pw:
-                browser = await pw.chromium.launch(headless=False)
-                if not browser:
-                    self.logger.error("❌ 無法創建瀏覽器實例")
-                    return [{"error": "❌ 無法創建瀏覽器實例"}]
-                
-                # 創建新的瀏覽器上下文，添加更多配置
-                context = await browser.new_context(
-                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                    viewport={'width': 1920, 'height': 1080},
-                    # 添加更多瀏覽器配置
-                    locale='en-US',
-                    timezone_id='America/New_York',
-                    permissions=['geolocation'],
-                    # 添加更多 HTTP 頭
-                    extra_http_headers={
-                        'Accept-Language': 'en-US,en;q=0.9',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                        'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-                        'sec-ch-ua-mobile': '?0',
-                        'sec-ch-ua-platform': '"Windows"'
-                    }
-                )
-                
-                if not context:
-                    self.logger.error("❌ 無法創建瀏覽器上下文")
-                    await browser.close()
-                    return [{"error": "❌ 無法創建瀏覽器上下文"}]
-                
-                for url in urls:
-                    page = None
-                    try:
-                        self.logger.info(f"🌐 開始分析網址: {url}")
-                        
-                        # 創建新頁面
-                        page = await context.new_page()
-                        if not page:
-                            self.logger.error(f"❌ 無法為 {url} 創建新頁面")
-                            results.append({"url": url, "error": "❌ 無法創建新頁面"})
-                            continue
-                        
-                        # 檢查是否為 Notion 頁面
-                        is_notion = "notion.so" in url
-                        if is_notion:
-                            self.logger.info("檢測到 Notion 頁面，使用特殊處理方式")
-                            
-                            # 設置更長的超時時間
-                            await page.set_default_timeout(60000)  # 60 秒
-                            
-                            # 設置 Notion 特定的 cookie 和認證信息
-                            await context.add_cookies([
-                                {
-                                    'name': 'notion_browser_id',
-                                    'value': 'random_browser_id',
-                                    'domain': '.notion.so',
-                                    'path': '/'
-                                },
-                                {
-                                    'name': 'notion_user_id',
-                                    'value': 'random_user_id',
-                                    'domain': '.notion.so',
-                                    'path': '/'
-                                },
-                                {
-                                    'name': 'notion_user_info',
-                                    'value': '{"id":"random_user_id","email":"user@example.com"}',
-                                    'domain': '.notion.so',
-                                    'path': '/'
-                                }
-                            ])
-                            
-                            # 設置 Notion 特定的請求頭
-                            await page.set_extra_http_headers({
-                                'X-Notion-Client': 'web',
-                                'X-Notion-Client-Version': '23.11.0.0',
-                                'X-Notion-Client-Platform': 'web',
-                                'X-Notion-Client-Platform-Version': 'Windows',
-                                'X-Notion-Client-User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                            })
-                        
-                        # 訪問網頁
-                        try:
-                            if is_notion:
-                                # 對於 Notion 頁面，使用不同的加載策略
-                                response = await page.goto(url, wait_until='domcontentloaded', timeout=60000)
-                                if not response:
-                                    raise Exception("頁面加載失敗")
-                                
-                                # 等待頁面加載完成
-                                await page.wait_for_load_state('networkidle', timeout=30000)
-                                
-                                # 等待特定元素出現
-                                try:
-                                    # 擴展 Notion 頁面內容選擇器
-                                    selectors = [
-                                        'div[class*="notion-page-content"]',
-                                        'div[class*="notion-page-block"]',
-                                        'div[class*="notion-text-block"]',
-                                        'div[class*="notion-collection"]',
-                                        'div[class*="notion-page"]',
-                                        'div[class*="notion-content"]'
-                                    ]
-                                    
-                                    for selector in selectors:
-                                        try:
-                                            await page.wait_for_selector(selector, timeout=5000)
-                                            self.logger.info(f"找到 Notion 內容元素: {selector}")
-                                            break
-                                        except:
-                                            continue
-                                except:
-                                    self.logger.warning("未找到 Notion 頁面內容元素，嘗試繼續處理")
-                                
-                                # 等待一段時間讓動態內容加載
-                                await page.wait_for_timeout(5000)
-                                
-                                # 嘗試滾動頁面以加載更多內容
-                                await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-                                await page.wait_for_timeout(2000)
-                                await page.evaluate('window.scrollTo(0, 0)')
-                                await page.wait_for_timeout(1000)
-                                
-                                # 使用 JavaScript 提取 Notion 頁面內容
-                                content = await page.evaluate('''() => {
-                                    const extractContent = (element) => {
-                                        const result = {
-                                            text: [],
-                                            images: [],
-                                            headings: []
-                                        };
-                                        
-                                        // 提取文本內容
-                                        const textElements = element.querySelectorAll(`
-                                            div[class*="notion-text-block"],
-                                            div[class*="notion-page-block"],
-                                            div[class*="notion-paragraph"],
-                                            div[class*="notion-list-item"],
-                                            div[class*="notion-bulleted-list"],
-                                            div[class*="notion-numbered-list"],
-                                            div[class*="notion-toggle"],
-                                            div[class*="notion-quote"],
-                                            div[class*="notion-callout"]
-                                        `);
-                                        
-                                        textElements.forEach(elem => {
-                                            const text = elem.textContent.trim();
-                                            if (text) {
-                                                result.text.push(text);
-                                            }
-                                        });
-                                        
-                                        // 提取圖片
-                                        const images = element.querySelectorAll('img');
-                                        images.forEach(img => {
-                                            const src = img.getAttribute('src');
-                                            if (src) {
-                                                result.images.push(src);
-                                            }
-                                        });
-                                        
-                                        // 提取標題
-                                        const headings = element.querySelectorAll(`
-                                            div[class*="notion-header-block"],
-                                            div[class*="notion-sub-header-block"],
-                                            div[class*="notion-sub-sub-header-block"]
-                                        `);
-                                        
-                                        headings.forEach(heading => {
-                                            const text = heading.textContent.trim();
-                                            if (text) {
-                                                result.headings.push(text);
-                                            }
-                                        });
-                                        
-                                        return result;
-                                    };
-                                    
-                                    // 嘗試不同的內容容器
-                                    const containers = [
-                                        document.querySelector('div[class*="notion-page-content"]'),
-                                        document.querySelector('div[class*="notion-page-block"]'),
-                                        document.querySelector('div[class*="notion-content"]'),
-                                        document.body
-                                    ];
-                                    
-                                    for (const container of containers) {
-                                        if (container) {
-                                            return extractContent(container);
-                                        }
-                                    }
-                                    
-                                    return null;
-                                }''')
-                                
-                                if content:
-                                    # 格式化提取的內容
-                                    formatted_content = []
-                                    
-                                    if content['headings']:
-                                        formatted_content.extend(content['headings'])
-                                    
-                                    if content['text']:
-                                        formatted_content.extend(content['text'])
-                                    
-                                    if content['images']:
-                                        formatted_content.append("\nImages found:")
-                                        formatted_content.extend(content['images'])
-                                    
-                                    combined_text = "\n\n".join(formatted_content)
-                                    
-                                    if combined_text.strip():
-                                        self.logger.info("成功提取 Notion 頁面內容")
-                                        summary = await summarize_pitch_deck(combined_text, message)
-                                        if summary:
-                                            self.logger.info("成功生成 Notion 頁面摘要")
-                                            results.append(summary)
-                                            continue
-                                        else:
-                                            self.logger.warning("❌ Notion 頁面摘要生成失敗")
-                                    else:
-                                        self.logger.warning("❌ 未能提取到有效的 Notion 頁面內容")
-                            else:
-                                response = await page.goto(url, wait_until='domcontentloaded', timeout=30000)
-                                if not response:
-                                    raise Exception("頁面加載失敗")
-                                await page.wait_for_load_state('networkidle', timeout=30000)
-                        except Exception as e:
-                            self.logger.warning(f"頁面加載超時，嘗試繼續處理: {str(e)}")
-                            results.append({"url": url, "error": f"❌ 頁面加載失敗: {str(e)}"})
-                            continue
-                        
-                        # 檢查是否為 Pitch Deck
-                        try:
-                            if page:  # 確保 page 不為 None
-                                is_deck = await self.is_pitch_deck(page)
-                                if is_deck:
-                                    self.logger.info("✅ 檢測到 Pitch Deck，使用特殊處理方式")
-                                    
-                                    # 保存頁面截圖以便調試
-                                    debug_screenshot_name = f"pitch_deck_debug_{random.randint(1000, 9999)}.png"
-                                    debug_screenshot_path = str(self.path_helper.get("tmp", debug_screenshot_name))
-                                    self.path_helper.ensure_dir("tmp")
-                                    await page.screenshot(path=debug_screenshot_path)
-                                    self.logger.info(f"保存頁面截圖至: {debug_screenshot_path}")
-                                    
-                                    # 處理 Pitch Deck 頁面
-                                    content = await self.process_pitch_deck_page(page)
-                                    if content:
-                                        self.logger.info("成功提取 Pitch Deck 內容，開始生成摘要")
-                                        summary = await summarize_pitch_deck(content, message)
-                                        if summary:
-                                            self.logger.info("成功生成 Pitch Deck 摘要")
-                                            results.append(summary)
-                                            continue
-                                        else:
-                                            self.logger.warning("❌ Pitch Deck 摘要生成失敗")
-                                    else:
-                                        self.logger.warning("❌ Pitch Deck 內容提取失敗")
-                                        
-                                    # 如果不是 Pitch Deck 或處理失敗，使用一般網頁處理方式
-                                    self.logger.info("使用一般網頁處理方式")
-                                    html = await page.content()
-                                    soup = BeautifulSoup(html, "html.parser")
-                                    
-                                    # 提取關鍵信息
-                                    extracted_data = {
-                                        "title": soup.title.string if soup.title else "",
-                                        "meta_description": "",
-                                        "main_content": [],
-                                        "company_info": {}
-                                    }
-                                    
-                                    # 提取 meta description
-                                    meta_desc = soup.find('meta', attrs={'name': 'description'})
-                                    if meta_desc:
-                                        extracted_data["meta_description"] = meta_desc.get('content', '')
-                                    
-                                    # 對於 Notion 頁面，使用特定的選擇器
-                                    if is_notion:
-                                        # 嘗試提取 Notion 頁面內容
-                                        notion_content = soup.find('div', class_=lambda x: x and 'notion-page-content' in str(x))
-                                        if notion_content:
-                                            # 提取所有文本內容
-                                            for element in notion_content.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'div']):
-                                                text = element.get_text(strip=True)
-                                                if text and len(text) > 10:
-                                                    extracted_data["main_content"].append(text)
-                                            
-                                            # 將提取的內容轉換為文本
-                                            combined_text = f"""
-                                            Title: {extracted_data['title']}
-                                            Description: {extracted_data['meta_description']}
-                                            
-                                            Main Content:
-                                            {' '.join(extracted_data['main_content'])}
-                                            
-                                            Company Info:
-                                            {json.dumps(extracted_data['company_info'], indent=2)}
-                                            """
-                                            
-                                            # 使用 GPT 分析內容
-                                            if combined_text.strip():
-                                                self.logger.info("開始使用 GPT 分析內容")
-                                                summary = await summarize_pitch_deck(combined_text, message)
-                                                if summary:
-                                                    self.logger.info("成功生成內容摘要")
-                                                    results.append(summary)
-                                                    continue
-                                                else:
-                                                    self.logger.warning("❌ GPT 分析失敗")
-                                    else:
-                                        # 一般網頁的處理方式
-                                        main_content = soup.find('main') or soup.find('article') or soup.find('div', class_=lambda x: x and ('content' in x.lower() or 'main' in x.lower()))
-                                        
-                                        if main_content:
-                                            for element in main_content.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li']):
-                                                text = element.get_text(strip=True)
-                                                if text and len(text) > 10:
-                                                    extracted_data["main_content"].append(text)
-                                        else:
-                                            for element in soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li']):
-                                                text = element.get_text(strip=True)
-                                                if text and len(text) > 10:
-                                                    extracted_data["main_content"].append(text)
-                                        
-                                        # 提取公司信息
-                                        for meta in soup.find_all('meta'):
-                                            if meta.get('property') == 'og:site_name':
-                                                extracted_data["company_info"]["name"] = meta.get('content', '')
-                                        
-                                        footer = soup.find('footer')
-                                        if footer:
-                                            footer_text = footer.get_text(strip=True)
-                                            if footer_text:
-                                                extracted_data["company_info"]["footer"] = footer_text
-                                        
-                                        # 將提取的內容轉換為文本
-                                        combined_text = f"""
-                                        Title: {extracted_data['title']}
-                                        Description: {extracted_data['meta_description']}
-                                        
-                                        Main Content:
-                                        {' '.join(extracted_data['main_content'])}
-                                        
-                                        Company Info:
-                                        {json.dumps(extracted_data['company_info'], indent=2)}
-                                        """
-                                        
-                                        # 使用 GPT 分析內容
-                                        if combined_text.strip():
-                                            self.logger.info("開始使用 GPT 分析內容")
-                                            summary = await summarize_pitch_deck(combined_text, message)
-                                            if summary:
-                                                self.logger.info("成功生成內容摘要")
-                                                results.append(summary)
-                                                continue
-                                            else:
-                                                self.logger.warning("❌ GPT 分析失敗")
-                                        
-                                        # 如果文字分析失敗，嘗試 OCR 圖片
-                                        self.logger.warning(f"⚠️ {url} 文字分析失敗，嘗試 OCR 圖片")
-                                        img_tags = soup.find_all("img")
-                                        image_urls = [img.get("src") for img in img_tags if img.get("src")]
-                                        
-                                        if image_urls:
-                                            self.logger.info(f"找到 {len(image_urls)} 張圖片，開始 OCR")
-                                            ocr_text = await ocr_images_from_urls(image_urls)
-                                            if ocr_text.strip():
-                                                self.logger.info("OCR 成功，開始生成摘要")
-                                                summary = await summarize_pitch_deck(ocr_text, message)
-                                                if summary:
-                                                    self.logger.info("成功生成 OCR 內容摘要")
-                                                    results.append(summary)
-                                                    continue
-                                                else:
-                                                    self.logger.warning("❌ OCR 內容摘要生成失敗")
-                                            else:
-                                                self.logger.warning("❌ OCR 失敗或未提取到文字")
-                        except Exception as e:
-                            self.logger.error(f"處理 Pitch Deck 時出錯: {str(e)}")
-                        
-                        results.append({"url": url, "error": "❌ 無法提取有效內容"})
-                        
-                    except Exception as e:
-                        self.logger.error(f"❌ 分析 {url} 失敗：{e}")
-                        results.append({"url": url, "error": f"❌ 分析失敗: {e}"})
-                    finally:
-                        if page:
-                            await page.close()
-                
-                await context.close()
-                await browser.close()
+        for url in urls:
+            try:
+                self.logger.info(f"🌐 開始分析網址: {url}")
+                content = await self.extract_content_with_openai(url)
+                if content:
+                    self.logger.info(f"OpenAI 成功提取內容: {len(content)} 字符")
+                    summaries.append(f"[來源: {url}]\n{content}")
+                    results.append({"url": url, "summary": content})
+                else:
+                    self.logger.warning("❌ OpenAI 沒有提取到內容")
+                    results.append({"url": url, "error": "❌ OpenAI 無法提取內容"})
+            except Exception as e:
+                self.logger.error(f"❌ 分析 {url} 失敗：{e}")
+                results.append({"url": url, "error": f"❌ 分析失敗: {e}"})
         
-        except Exception as e:
-            self.logger.error(f"❌ 瀏覽器操作失敗：{e}")
-            return [{"error": f"❌ 瀏覽器操作失敗: {e}"}]
-        
-        return results if results else [{"error": "❌ 沒有成功處理任何網址"}]
+        # 只要有 summary 就合併統整，不回傳 sources
+        if summaries:
+            merged = "\n\n".join(summaries)[:12000]
+            openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            prompt = (
+                "你是一個專業的內容摘要助手，請根據以下多個來源的網頁內容，統整所有重要資訊，盡可能囊括細節並篩除無意義資訊（如：用戶需要邀請碼才能訪問），並以條列、結構化方式回覆：\n"
+                f"內容:\n{merged}\n"
+            )
+            response = await openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "你是一個專業的內容摘要助手。"},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2,
+                max_tokens=2048
+            )
+            return [{"summary": response.choices[0].message.content}]
+        else:
+            return results if results else [{"error": "❌ 沒有成功處理任何網址"}]
 
     async def process_pitch_deck_page(self, page) -> Optional[str]:
         """處理 Pitch Deck 頁面"""
@@ -1525,6 +1162,216 @@ class DeckBrowser:
             self.logger.error(f"處理 Journey.io 頁面時出錯: {str(e)}", exc_info=True)
             return None
 
+    async def extract_content_with_openai(self, url: str) -> Optional[str]:
+        """用 Playwright 取得渲染後內容，再丟給 GPT 摘要（強化抓取策略，支援 GitBook/Notion/Docs 多分頁）"""
+        try:
+            self.logger.info(f"用 Playwright 取得渲染後內容: {url}")
+            async with async_playwright() as pw:
+                browser = await pw.chromium.launch(headless=True)
+                page = await browser.new_page()
+                try:
+                    await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                except Exception as e:
+                    self.logger.warning(f"第一次 goto domcontentloaded 失敗: {e}")
+                    try:
+                        await page.goto(url, wait_until="load", timeout=60000)
+                    except Exception as e2:
+                        self.logger.error(f"第二次 goto load 也失敗: {e2}")
+                        await browser.close()
+                        return None
+
+                # 判斷是否為 GitBook/Notion/Docs 這類有目錄的網站
+                is_multi_page = False
+                sidebar_selectors = [
+                    'nav.toc a',           # GitBook
+                    'nav[aria-label="Table of contents"] a',
+                    'aside a',             # Notion/Docs
+                    '.sidebar a',
+                    '.menu a',
+                    '.toc a',
+                    'nav a',
+                ]
+                all_links = set()
+                for sel in sidebar_selectors:
+                    try:
+                        links = await page.query_selector_all(sel)
+                        for link in links:
+                            href = await link.get_attribute('href')
+                            if href and not href.startswith('#') and not href.startswith('javascript:'):
+                                # 統一補全相對路徑
+                                if href.startswith('/') and url.startswith('http'):
+                                    from urllib.parse import urljoin
+                                    href = urljoin(url, href)
+                                elif href.startswith('http'):
+                                    pass
+                                else:
+                                    continue
+                                all_links.add(href)
+                        if len(all_links) > 3:
+                            is_multi_page = True
+                            self.logger.info(f"偵測到多分頁目錄 selector: {sel}，共 {len(all_links)} 個分頁")
+                            break
+                    except Exception:
+                        continue
+
+                all_links = list(all_links)
+                if url not in all_links:
+                    all_links = [url] + all_links
+
+                all_contents = []
+                if is_multi_page:
+                    # 遍歷所有分頁
+                    for idx, link in enumerate(all_links):
+                        try:
+                            self.logger.info(f"[多分頁] 抓取第{idx+1}/{len(all_links)}頁: {link}")
+                            await page.goto(link, wait_until="domcontentloaded", timeout=30000)
+                            await page.wait_for_timeout(1000)
+                            # 滾動到底部
+                            await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                            await page.wait_for_timeout(1000)
+                            await page.evaluate('window.scrollTo(0, 0)')
+                            await page.wait_for_timeout(500)
+                            html = await page.content()
+                            soup = BeautifulSoup(html, "html.parser")
+                            title = soup.title.string.strip() if soup.title else ""
+                            main = soup.find("main") or soup.find("article") or soup.body
+                            text_blocks = []
+                            if main:
+                                for tag in main.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "p", "li"]):
+                                    txt = tag.get_text(strip=True)
+                                    if txt and len(txt) > 10:
+                                        text_blocks.append(txt)
+                            if len(text_blocks) < 5:
+                                for tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "span", "div"]):
+                                    txt = tag.get_text(strip=True)
+                                    if txt and len(txt) > 20:
+                                        text_blocks.append(txt)
+                            content = f"[分頁: {title or link}]:\n" + "\n".join(text_blocks)
+                            if content.strip():
+                                all_contents.append(content)
+                        except Exception as e:
+                            self.logger.warning(f"[多分頁] 抓取 {link} 失敗: {e}")
+                    await browser.close()
+                    merged_content = "\n\n".join(all_contents)[:12000]  # 限制長度
+                    if not merged_content or len(merged_content) < 100:
+                        self.logger.warning("多分頁抓取後仍無有效內容")
+                        return None
+                    # 丟給 GPT
+                    openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                    prompt = (
+                        "你是一個專業的內容摘要助手，請根據以下多分頁網頁內容，提取所有重要資訊，並以條列、結構化方式回覆：\n"
+                        f"內容:\n{merged_content}\n"
+                    )
+                    response = await openai_client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=[
+                            {"role": "system", "content": "你是一個專業的內容摘要助手。"},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.2,
+                        max_tokens=2048
+                    )
+                    return response.choices[0].message.content
+                else:
+                    # 單頁網站維持原本策略
+                    # 1. 嘗試等待常見內容 selector
+                    selectors = [
+                        'main', 'article', 'section', '.content', '.main', '.article', '#content', '#main', '#app', '#root'
+                    ]
+                    found = False
+                    for sel in selectors:
+                        try:
+                            await page.wait_for_selector(sel, timeout=3000)
+                            found = True
+                            self.logger.info(f"等待 selector 成功: {sel}")
+                            break
+                        except Exception:
+                            continue
+                    # 2. 自動點擊展開/更多按鈕
+                    expand_selectors = [
+                        'button:has-text("展開")', 'button:has-text("更多")', 'button:has-text("Read more")',
+                        'button:has-text("Show more")', 'a:has-text("展開")', 'a:has-text("更多")',
+                        'a:has-text("Read more")', 'a:has-text("Show more")'
+                    ]
+                    for sel in expand_selectors:
+                        try:
+                            btns = await page.query_selector_all(sel)
+                            for btn in btns:
+                                await btn.click()
+                                self.logger.info(f"自動點擊展開/更多按鈕: {sel}")
+                                await page.wait_for_timeout(500)
+                        except Exception:
+                            continue
+                    # 3. 滾動到底部，確保動態內容載入
+                    await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                    await page.wait_for_timeout(2000)
+                    await page.evaluate('window.scrollTo(0, 0)')
+                    await page.wait_for_timeout(1000)
+                    # 4. 嘗試多種方式提取內容
+                    html = await page.content()
+                    soup = BeautifulSoup(html, "html.parser")
+                    title = soup.title.string.strip() if soup.title else ""
+                    meta_desc = soup.find("meta", attrs={"name": "description"})
+                    desc = meta_desc["content"].strip() if meta_desc and meta_desc.get("content") else ""
+                    text_blocks = []
+                    main = soup.find("main") or soup.find("article") or soup.body
+                    if main:
+                        for tag in main.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "p", "li"]):
+                            txt = tag.get_text(strip=True)
+                            if txt and len(txt) > 10:
+                                text_blocks.append(txt)
+                    if len(text_blocks) < 5:
+                        for tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "span", "div"]):
+                            txt = tag.get_text(strip=True)
+                            if txt and len(txt) > 20:
+                                text_blocks.append(txt)
+                    if len(text_blocks) < 3:
+                        try:
+                            inner_text = await page.evaluate('document.body.innerText')
+                            if inner_text:
+                                for line in inner_text.splitlines():
+                                    line = line.strip()
+                                    if len(line) > 20:
+                                        text_blocks.append(line)
+                                self.logger.info("已抓取 body.innerText")
+                        except Exception as e:
+                            self.logger.warning(f"抓取 body.innerText 失敗: {e}")
+                    if len(text_blocks) < 3:
+                        try:
+                            text_content = await page.evaluate('document.body.textContent')
+                            if text_content:
+                                for line in text_content.splitlines():
+                                    line = line.strip()
+                                    if len(line) > 20:
+                                        text_blocks.append(line)
+                                self.logger.info("已抓取 body.textContent")
+                        except Exception as e:
+                            self.logger.warning(f"抓取 body.textContent 失敗: {e}")
+                    await browser.close()
+                    content = "\n".join(text_blocks)[:6000]  # 限制長度
+                    if not content or len(content) < 100:
+                        self.logger.warning("Playwright 沒有抓到有效內容，該網站可能需登入或有防爬蟲措施")
+                        return None
+                    # 丟給 GPT，直接寫死 prompt
+                    openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                    prompt = (
+                        "你是一個專業的內容摘要助手，請根據以下網頁內容，提取所有重要資訊，並以條列、結構化方式回覆：\n"
+                        f"標題: {title}\n描述: {desc}\n內容:\n{content}\n"
+                    )
+                    response = await openai_client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=[
+                            {"role": "system", "content": "你是一個專業的內容摘要助手。"},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.2,
+                        max_tokens=2048
+                    )
+                    return response.choices[0].message.content
+        except Exception as e:
+            self.logger.error(f"Playwright+GPT 摘要流程失敗: {str(e)}")
+            return None
+
 #GPT 總結        
 openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -1651,6 +1498,8 @@ async def summarize_pitch_deck(ocr_text: str, message: str = "") -> Dict:
     # 直接返回 OCR 結果
     return {
         "raw_content": ocr_text,
+        "url": "",  # 添加空的 URL 字段以避免序列化問題
+        "error": None  # 添加空的 error 字段以避免序列化問題
     }
 
 async def debug_all_iframes(page):
@@ -1702,12 +1551,7 @@ if __name__ == "__main__":
 
     async def main():
         message = """
-        Superform
-        CEO is Vikram Arun
-
-        https://docsend.com/view/u89ffgabbsvugtud/d/gnakfcdzn52uvmq5
-
-        pw: wealthy2025
+        https://chompdotgames.notion.site/
         """
         
         reader = DeckBrowser()

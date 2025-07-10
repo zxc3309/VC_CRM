@@ -82,17 +82,20 @@ class DealAnalyzer:
         # 使用正則表達式匹配各種可能的文檔連結
         docsend_pattern = r'https?://(?:www\.)?docsend\.com/[^\s)"}]+'
         gdrive_pattern = r'https://(?:drive|docs)\.google\.com/(?:file/d/|presentation/)[\w\-/]+'
-        notion_pattern = r'https://(?:www\.)?notion\.so/[a-zA-Z0-9\-]+'
         
         # 按優先順序檢查各種連結
         if re.search(docsend_pattern, message):
             return re.search(docsend_pattern, message).group(0)
         elif re.search(gdrive_pattern, message):
             return re.search(gdrive_pattern, message).group(0)
-        elif re.search(notion_pattern, message):
-            return re.search(notion_pattern, message).group(0)
         
         return None
+
+    def extract_ref_links(self, message: str) -> list:
+        """從消息中提取所有 http(s) 連結"""
+        if not message:
+            return []
+        return re.findall(r'https?://[^\s)"\']+', message)
 
     async def analyze_deal(self, message_text: str, deck_data: str) -> Dict[str, Any]:
         """
@@ -230,6 +233,7 @@ class DealAnalyzer:
             
             # 提取文檔連結
             deck_link = self.extract_deck_link(message_text)
+            ref_links = self.extract_ref_links(message_text)
             
             # Compile the deal data
             deal_data = {
@@ -244,6 +248,8 @@ class DealAnalyzer:
             # 如果有找到連結，添加到結果中
             if deck_link:
                 deal_data["Deck Link"] = deck_link
+            if ref_links:
+                deal_data["Reference Links"] = ref_links
             
             self.logger.info("Deal analysis complete.")
             return {
