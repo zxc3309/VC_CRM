@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 複製專案檔案
 COPY . .
 
+# 複製 LinkedIn cookies（如果存在）
+COPY linkedin_cookies.json* ./
+
 # 安裝 Python 套件
 RUN pip install --no-cache-dir -r requirements.txt
 
