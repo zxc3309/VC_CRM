@@ -13,7 +13,6 @@ from PIL import Image
 import pytesseract
 import shutil
 import requests
-from openai import AsyncOpenAI
 import json
 import fitz  # PyMuPDF for PDF
 import tempfile
@@ -71,7 +70,7 @@ class DeckBrowser:
             return "attachment"
         elif re.search(r"https://(?:drive|docs)\.google\.com/(?:file/d/|presentation/)[\w\-/]+", message):
             return "gdrive"
-        elif re.search(r"https?://[^\s\)\"]+", message):  # 匹配任何網址
+        elif re.search(r"https?://[^\s\)]+", message):  # 匹配任何網址
             return "website"
         else:
             return "unknown"
@@ -95,27 +94,55 @@ class DeckBrowser:
         # 先擷取密碼
         self.docsend_password = self.extract_password_from_message(message)
         self.logger.info(f"已擷取密碼: {self.docsend_password}" )
-        source_type = self.detect_source_type(message, attachments)
         results = []  # 用於存儲所有結果
+        processed_urls = set()
 
-        if source_type == "docsend":
+        # 1. DocSend
+        if "docsend.com" in message.lower():
             self.logger.info(f"開始處理 Docsend")
-            return await self.run_docsend_analysis(message)
-        elif source_type == "attachment":
+            docsend_results = await self.run_docsend_analysis(message)
+            if docsend_results:
+                results.extend(docsend_results)
+            # 收集已處理過的 DocSend 連結
+            docsend_urls = await self.extract_docsend_links(message)
+            processed_urls.update(docsend_urls)
+
+        # 2. Attachment
+        if attachments and any(
+            att.get("name", "").lower().endswith((".pdf", ".pptx", ".ppt"))
+            for att in attachments if isinstance(att, dict)
+        ):
             self.logger.info(f"開始處理 Attachment")
-            return await self.run_file_analysis(attachments)
-        elif source_type == "gdrive":
+            attachment_results = await self.run_file_analysis(attachments)
+            if attachment_results:
+                results.extend(attachment_results)
+            # 附件通常沒有網址，這裡略過
+
+        # 3. GDrive
+        gdrive_urls = []
+        if re.search(r"https://(?:drive|docs)\.google\.com/(?:file/d/|presentation/)[\w\-/]+", message):
             self.logger.info(f"開始處理 Google Drive")
-            return await self.run_gdrive_analysis(message)
-        elif source_type == "website":
+            gdrive_results = await self.run_gdrive_analysis(message)
+            if gdrive_results:
+                results.extend(gdrive_results)
+            # 收集已處理過的 GDrive 連結
+            gdrive_urls = re.findall(r'https://drive\.google\.com/file/d/[\w-]+|https://docs\.google\.com/presentation/d/[\w-]+', message)
+            processed_urls.update(gdrive_urls)
+
+        # 4. Generic Website
+        if re.search(r"https?://[^\s\)]+", message):
             self.logger.info("🔗 偵測為一般網站，開始擷取網頁內容進行分析")
-            return await self.run_generic_link_analysis(message)
-        else:
-            self.logger.info(f"Unknown")
-            # 新增：允許純文字直接丟給 GPT
+            generic_results = await self.run_generic_link_analysis(message, exclude_urls=processed_urls)
+            if generic_results:
+                results.extend(generic_results)
+
+        # 5. 純文字
+        if not results:
             self.logger.info("未偵測到連結或附件，直接分析純文字內容")
-            summary = await summarize_pitch_deck(message, message)  # 傳入 message 兩次，一次作為內容，一次用於提取公司名稱
+            summary = await summarize_pitch_deck(message, message)
             return [summary] if summary else [{"error": "❌ 純文字分析失敗"}]
+
+        return results if results else [{"error": "❌ 沒有成功擷取任何內容"}]
 
     async def run_docsend_analysis(self, message: str) -> List[Dict[str, Any]]:
         """
@@ -687,11 +714,16 @@ class DeckBrowser:
             self.logger.error(f"Error checking if page is pitch deck: {e}")
             return False
 
-    async def run_generic_link_analysis(self, message: str) -> List[Dict[str, Any]]:
-        """分析一般網址（包括公司官網），只回傳 summary 統整內容，不回傳 sources"""
-        urls = re.findall(r'https?://[^\s\)"]+', message)
+    async def run_generic_link_analysis(self, message: str, exclude_urls: set = None) -> List[Dict[str, Any]]:
+        """分析一般網址（包括公司官網），每個網址單獨回傳 summary，不合併統整"""
+        urls = re.findall(r'https?://[^\s\)]+', message)
+        if exclude_urls:
+            # 標準化網址（去除末尾斜線）
+            def norm(u):
+                return u.rstrip('/')
+            exclude_set = set(map(norm, exclude_urls))
+            urls = [u for u in urls if norm(u) not in exclude_set]
         results = []
-        summaries = []
         
         if not urls:
             return [{"error": "❌ 未找到任何有效的網址"}]
@@ -701,38 +733,17 @@ class DeckBrowser:
         for url in urls:
             try:
                 self.logger.info(f"🌐 開始分析網址: {url}")
-                content = await self.extract_content_with_openai(url)
+                content = await self.extract_content(url)
                 if content:
-                    self.logger.info(f"OpenAI 成功提取內容: {len(content)} 字符")
-                    summaries.append(f"[來源: {url}]\n{content}")
+                    self.logger.info(f"成功提取內容: {len(content)} 字符")
                     results.append({"url": url, "summary": content})
                 else:
-                    self.logger.warning("❌ OpenAI 沒有提取到內容")
-                    results.append({"url": url, "error": "❌ OpenAI 無法提取內容"})
+                    self.logger.warning("❌ 沒有提取到內容")
+                    results.append({"url": url, "error": "❌ 無法提取內容"})
             except Exception as e:
                 self.logger.error(f"❌ 分析 {url} 失敗：{e}")
                 results.append({"url": url, "error": f"❌ 分析失敗: {e}"})
-        
-        # 只要有 summary 就合併統整，不回傳 sources
-        if summaries:
-            merged = "\n\n".join(summaries)[:12000]
-            openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-            prompt = (
-                "你是一個專業的內容摘要助手，請根據以下多個來源的網頁內容，統整所有重要資訊，盡可能囊括細節並篩除無意義資訊（如：用戶需要邀請碼才能訪問），並以條列、結構化方式回覆：\n"
-                f"內容:\n{merged}\n"
-            )
-            response = await openai_client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "你是一個專業的內容摘要助手。"},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.2,
-                max_tokens=2048
-            )
-            return [{"summary": response.choices[0].message.content}]
-        else:
-            return results if results else [{"error": "❌ 沒有成功處理任何網址"}]
+        return results if results else [{"error": "❌ 沒有成功處理任何網址"}]
 
     async def process_pitch_deck_page(self, page) -> Optional[str]:
         """處理 Pitch Deck 頁面"""
@@ -1162,8 +1173,8 @@ class DeckBrowser:
             self.logger.error(f"處理 Journey.io 頁面時出錯: {str(e)}", exc_info=True)
             return None
 
-    async def extract_content_with_openai(self, url: str) -> Optional[str]:
-        """用 Playwright 取得渲染後內容，再丟給 GPT 摘要（強化抓取策略，支援 GitBook/Notion/Docs 多分頁）"""
+    async def extract_content(self, url: str) -> Optional[str]:
+        """用 Playwright 取得渲染後內容，只抓主要文字內容，不呼叫 GPT"""
         try:
             self.logger.info(f"用 Playwright 取得渲染後內容: {url}")
             async with async_playwright() as pw:
@@ -1256,22 +1267,7 @@ class DeckBrowser:
                     if not merged_content or len(merged_content) < 100:
                         self.logger.warning("多分頁抓取後仍無有效內容")
                         return None
-                    # 丟給 GPT
-                    openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-                    prompt = (
-                        "你是一個專業的內容摘要助手，請根據以下多分頁網頁內容，提取所有重要資訊，並以條列、結構化方式回覆：\n"
-                        f"內容:\n{merged_content}\n"
-                    )
-                    response = await openai_client.chat.completions.create(
-                        model="gpt-4o",
-                        messages=[
-                            {"role": "system", "content": "你是一個專業的內容摘要助手。"},
-                            {"role": "user", "content": prompt}
-                        ],
-                        temperature=0.2,
-                        max_tokens=2048
-                    )
-                    return response.choices[0].message.content
+                    return merged_content
                 else:
                     # 單頁網站維持原本策略
                     # 1. 嘗試等待常見內容 selector
@@ -1352,28 +1348,11 @@ class DeckBrowser:
                     if not content or len(content) < 100:
                         self.logger.warning("Playwright 沒有抓到有效內容，該網站可能需登入或有防爬蟲措施")
                         return None
-                    # 丟給 GPT，直接寫死 prompt
-                    openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-                    prompt = (
-                        "你是一個專業的內容摘要助手，請根據以下網頁內容，提取所有重要資訊，並以條列、結構化方式回覆：\n"
-                        f"標題: {title}\n描述: {desc}\n內容:\n{content}\n"
-                    )
-                    response = await openai_client.chat.completions.create(
-                        model="gpt-4o",
-                        messages=[
-                            {"role": "system", "content": "你是一個專業的內容摘要助手。"},
-                            {"role": "user", "content": prompt}
-                        ],
-                        temperature=0.2,
-                        max_tokens=2048
-                    )
-                    return response.choices[0].message.content
+                    return content
         except Exception as e:
-            self.logger.error(f"Playwright+GPT 摘要流程失敗: {str(e)}")
+            self.logger.error(f"Playwright內容擷取流程失敗: {str(e)}")
             return None
 
-#GPT 總結        
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 async def ocr_images_from_urls(image_urls: List[str]) -> str:
     """下載圖片並執行 OCR"""
@@ -1551,7 +1530,23 @@ if __name__ == "__main__":
 
     async def main():
         message = """
-        https://chompdotgames.notion.site/
+        TrueNorth
+        Crypto's first AI discovery engine that uses agentic technology to unlock a symbiotic user journey - from intent straight to outcome
+
+        Co-founders
+
+        Willy: Serial entrepreneur with a successful M&A exit (Series-B SaaS startup), Forbes 30 Under 30 China, ex-COO and acting CEO of WOO.
+
+        Alex: PhD in AI & Domain-Specific Computing, ex-McKinsey, ex-Temasek, Head of Product, Strategy and Capital Market at Enflame (~USD3b pre-IPO AI chip startup), and the Tech Founding Partner of Iluvatar (~USD2b pre-IPO AI chip startup).
+
+        Backed by
+        Cyber Fund, Delphi Labs and founders, GPs from Layerzero, Virtuals, Selini, SEI, Merlin, Presto, LTP, Initial, Generative and more.
+
+        Deck
+        https://docsend.com/v/w7g7p/truenorth-pitch-deck-seed
+
+        Website
+        https://true-north.xyz/\
         """
         
         reader = DeckBrowser()
@@ -1559,7 +1554,7 @@ if __name__ == "__main__":
             await reader.initialize()
             results = await reader.process_input(message)
             if results:
-                print(json.dumps(results[0], ensure_ascii=False, indent=2))
+                print(json.dumps(results, ensure_ascii=False, indent=2))
             else:
                 print("⚠️ 沒有擷取到任何結果")
         except Exception as e:
