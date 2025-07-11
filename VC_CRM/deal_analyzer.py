@@ -12,7 +12,6 @@ from playwright.async_api import async_playwright
 import random
 import urllib.parse
 from bs4 import BeautifulSoup
-from linkedin_sourcing import get_linkedin_profile_html
 
     
 class DealAnalyzer:
@@ -446,30 +445,16 @@ class DealAnalyzer:
             web_query = f"{founder_name} {company_name} {industry_info} 創辦人背景 {deck_data[:100]}"
             web_result = await self._web_search(web_query)
             search_content = web_result.get('content', '') if web_result else ''
-
-            # 直接呼叫 linkedin_sourcing 取得結構化 dict
-            profile_url, ln_structured = await get_linkedin_profile_html(company_name, founder_name, return_structured=True)
-            # 1. LinkedIn profile name 檢查
-            profile_name = ln_structured.get("name") if ln_structured else None
-            if not profile_name or profile_name.strip().lower() != founder_name.strip().lower():
-                self.logger.warning(f"LinkedIn profile name '{profile_name}' does not match founder_name '{founder_name}'，停止 LinkedIn Research。")
-                ln_structured = {}
-            # ln_structured 會有 about/experience/education 等欄位
             prompt = self.prompt_manager.get_prompt_and_format(
                 'research_founder_background',
                 founder_name=founder_name,
-                linkedin_structured=ln_structured,
                 deck_data=deck_data,
                 search_content=search_content,
                 industry_info=industry_info,
                 message_text=message_text
             )
             founder_info = await self._get_completion(prompt, "founder_background")
-            return {
-                **founder_info,
-                "linkedin_structured": ln_structured,
-                "LinkedIn URL": profile_url
-            }
+
         except Exception as e:
             self.logger.error(f"研究創始人背景時出錯: {str(e)}", exc_info=True)
             return {
@@ -480,7 +465,6 @@ class DealAnalyzer:
                 'achievements': 'N/A',
                 'sources': [],
                 'LinkedIn URL': 'N/A',
-                'linkedin_structured': {},
             }
 
     async def _web_search(self, query: str) -> Dict[str, Any]:
