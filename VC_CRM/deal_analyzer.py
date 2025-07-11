@@ -454,8 +454,11 @@ class DealAnalyzer:
                 message_text=message_text
             )
             founder_info = await self._get_completion(prompt, "founder_background")
-            return founder_info,
-        
+            return {
+                **founder_info,
+                "LinkedIn URL": "N/A"
+            }
+
         except Exception as e:
             self.logger.error(f"研究創始人背景時出錯: {str(e)}", exc_info=True)
             return {
