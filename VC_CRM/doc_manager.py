@@ -81,7 +81,21 @@ class DocManager:
                     formatted.append(f"{i}. {key}: {value}")
         return "\n".join(formatted)
     
-    async def suggest_questions_with_gpt(self, deal_data, input_data) -> list[str]:
+    def format_observation(self, observation):
+        """將觀察列表格式化為數字列點形式"""
+        if not isinstance(observation, list):
+            return str(observation)
+        formatted = []
+        for i, obs in enumerate(observation, 1):
+            if isinstance(obs, str):
+                formatted.append(f"{i}. {obs}")
+            elif isinstance(obs, dict):
+                formatted.append(f"{i}. " + ", ".join(f"{k}: {v}" for k, v in obs.items()))
+            else:
+                formatted.append(f"{i}. {str(obs)}")
+        return "\n".join(formatted)
+    
+    async def suggest_questions_with_gpt(self, deal_data, input_data) -> tuple[list[str], list[str]]:
         """根據 pitch deck 摘要，自動建議第一次接觸該新創應該問的問題"""
         try:
             # 從 prompt manager 獲取問題列表
@@ -100,8 +114,11 @@ class DocManager:
                 question_list4=question_list4
             )
 
+            # 取得 AI model
+            ai_model = getattr(self, 'ai_model', None) or input_data.get('ai_model') or "gpt-4.1"
+
             response = await self.openai_client.chat.completions.create(
-                model="gpt-4-turbo",
+                model=ai_model,
                 messages=[
                     {"role": "system", "content": "You are a professional VC analyst."},
                     {"role": "user", "content": prompt}
@@ -112,23 +129,25 @@ class DocManager:
 
             result = response.choices[0].message.content
             try:
-                questions = json.loads(result).get("questions", [])
-            except Exception:
-                # fallback in case not JSON-formatted
-                questions = [line.strip("- ").strip() for line in result.strip().split("\n") if line]
+                result_json = json.loads(result)
+                questions = result_json.get("questions", [])
+                observation = result_json.get("observation", [])
+            except Exception as e:
+                questions = []
+                observation = []
+                logger.error(f"解析 AI 回傳問題/觀察時發生錯誤：{str(e)}")
 
-            # 將 prompt 和結果存到 input_data 中
-            # 找到第一個空的 AI Prompt 位置
+            # 存到 input_data
             for i in range(1, 6):
                 if not input_data.get(f"AI Prompt{i}"):
                     input_data[f"AI Prompt{i}"] = prompt
-                    input_data[f"AI Content{i}"] = json.dumps({"questions": questions}, ensure_ascii=False)
+                    input_data[f"AI Content{i}"] = json.dumps(result_json, ensure_ascii=False)
                     break
 
-            return questions
+            return questions, observation
         except Exception as e:
             logger.error(f"生成問題時發生錯誤：{str(e)}")
-            return []
+            return [], []
 
     async def create_doc(self, deal_data, input_data):
         # 資料前處理
@@ -143,7 +162,9 @@ class DocManager:
         company_category= self.stringify(deal_data.get("company_category", "N/A"))
         company_info = self.stringify(deal_data.get("company_info", {}).get("company_introduction", "N/A"))
         funding_info = self.stringify(deal_data.get("funding_info", "N/A"))
-        suggested_questions = self.format_questions(await self.suggest_questions_with_gpt(deal_data, input_data))
+        questions, observation = await self.suggest_questions_with_gpt(deal_data, input_data)
+        founder_observation = self.format_observation(observation)
+        suggested_questions = self.format_questions(questions)
         # 獲取 deck_link，如果是 N/A 則不創建超連結
         deck_link = deal_data.get("Deck Link", "N/A")
         # Reference Links 處理
@@ -191,6 +212,7 @@ class DocManager:
                 ("Founder Experience", founder_companies),
                 ("Founder Education", founder_education),
                 ("Founder Achievements", founder_achievements),
+                ("Observation", founder_observation),
                 ("Suggested Questions", suggested_questions),
                 ("Deck Link：", deck_link),
                 ("Reference Link：", ref_links_str)
