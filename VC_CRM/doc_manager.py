@@ -137,12 +137,9 @@ class DocManager:
                 observation = []
                 logger.error(f"解析 AI 回傳問題/觀察時發生錯誤：{str(e)}")
 
-            # 存到 input_data
-            for i in range(1, 6):
-                if not input_data.get(f"AI Prompt{i}"):
-                    input_data[f"AI Prompt{i}"] = prompt
-                    input_data[f"AI Content{i}"] = json.dumps(result_json, ensure_ascii=False)
-                    break
+            # 新增：把 prompt 和結果放到 input_data
+            input_data["AI Prompt5"] = prompt
+            input_data["AI Content5"] = json.dumps(result_json, ensure_ascii=False)
 
             return questions, observation
         except Exception as e:

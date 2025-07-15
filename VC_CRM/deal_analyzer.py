@@ -181,19 +181,8 @@ class DealAnalyzer:
                 founder_info = await self._search_founder_names(company_name, deck_data, industry_info)
                 founder_names = founder_info.get("founder_names", [])
             else:
-                # Skip one AI_prompt slot if founder names are already found
-                for i in range(1, 6):
-                    if not self.input_data[f"AI Prompt{i}"]:
-                        self.input_data[f"AI Prompt{i}"] = "Skipped - Founder names already found"
-                        self.input_data[f"AI Content{i}"] = json.dumps({"skipped": True, "reason": "Founder names already found"}, ensure_ascii=False)
-                        break
-                
-                # Skip one Web_prompt slot if founder names are already found
-                for i in range(1, 4):
-                    if not self.input_data[f"Web Prompt{i}"]:
-                        self.input_data[f"Web Prompt{i}"] = "Skipped - Founder names already found"
-                        self.input_data[f"Web Content{i}"] = json.dumps({"skipped": True, "reason": "Founder names already found"}, ensure_ascii=False)
-                        break
+                # 這裡不再自動填入 input_data，讓主流程明確指定 mapping
+                pass
             
             self.logger.info(f"找到創辦人名稱: {founder_names}")
             
@@ -218,17 +207,6 @@ class DealAnalyzer:
                     'achievements': 'N/A',
                     'LinkedIn URL': 'N/A'
                 }
-                # 生成空的 AI Prompt/Content 以保持結構完整
-                for i in range(1, 6):
-                    if not self.input_data[f"AI Prompt{i}"]:
-                        self.input_data[f"AI Prompt{i}"] = f"No founder found for {company_name}"
-                        self.input_data[f"AI Content{i}"] = json.dumps({"error": "No founder information available"}, ensure_ascii=False)
-            
-            # 確保 Web Prompt/Content 結構完整
-            for i in range(1, 4):
-                if not self.input_data[f"Web Prompt{i}"]:
-                    self.input_data[f"Web Prompt{i}"] = f"Error detected, please view log"
-                    self.input_data[f"Web Content{i}"] = "Error detected, please view log"
             
             # 提取文檔連結
             deck_link = self.extract_deck_link(message_text)
@@ -275,10 +253,16 @@ class DealAnalyzer:
             # 如果 company_name 抓不到，raise Exception
             if not result.get("company_name"):
                 raise ValueError("❌ 無法從訊息中擷取公司名稱，流程終止。請提供更明確的公司資訊。")
+            # 新增：把 prompt 和結果放到 input_data
+            self.input_data["AI Prompt1"] = prompt
+            self.input_data["AI Content1"] = json.dumps(result, ensure_ascii=False)
             return result
         except Exception as e:
             self.logger.error(f"提取初始信息時出錯: {str(e)}")
             self.logger.error(traceback.format_exc())
+             # 新增：把錯誤結果放到 input_data
+            self.input_data["AI Prompt1"] = prompt
+            self.input_data["AI Content1"] = f"Error detected, please view logs"
             raise  # 讓 analyze_deal 捕捉
 
     async def _search_founder_names(self, company_name: str, deck_data: str, industry_info: str) -> Dict[str, Any]:
@@ -301,6 +285,8 @@ class DealAnalyzer:
             
             for query in search_queries:
                 search_results = await self._web_search(query)
+                self.input_data["Web Prompt1"] = query
+                self.input_data["Web Content1"] = search_results.get('content', '')
                 
                 if not search_results or (not search_results.get('content') and not search_results.get('citations')):
                     continue
@@ -324,6 +310,8 @@ class DealAnalyzer:
                 )
                 
                 result = json.loads(completion.choices[0].message.content)
+                self.input_data["AI Prompt2"] = prompt
+                self.input_data["AI Content2"] = json.dumps(result, ensure_ascii=False)
                 founders = result.get('founders', [])
                 
                 # 修正：同時支援 founders 為 dict list 或 string list
@@ -357,6 +345,8 @@ class DealAnalyzer:
             
             # 執行網絡搜索
             search_results = await self._web_search(search_query)
+            self.input_data["Web Prompt2"] = search_query
+            self.input_data["Web Content2"] = search_results.get('content', '')
             search_content = search_results.get('content', '') if search_results else ''
 
             prompt = self.prompt_manager.get_prompt_and_format(
@@ -370,6 +360,8 @@ class DealAnalyzer:
             )
             
             company_info = await self._get_completion(prompt, "company_details")
+            self.input_data["AI Prompt3"] = prompt
+            self.input_data["AI Content3"] = json.dumps(company_info, ensure_ascii=False)
 
             # 返回結構化信息
             full_company_summary = f"""【One Liner】
@@ -442,8 +434,16 @@ class DealAnalyzer:
         try:
             self.logger.info(f"研究 {founder_name} 的背景")
             # 先進行一次 web search
-            web_query = f"{founder_name} {company_name} {industry_info} 創辦人背景 {deck_data[:100]}"
+            web_query = self.prompt_manager.get_prompt_and_format(
+                'research_founder_background_query',
+                founder_name=founder_name,
+                company_name=company_name,
+                industry_info=industry_info,
+                deck_data=deck_data
+            )
             web_result = await self._web_search(web_query)
+            self.input_data["Web Prompt3"] = web_query
+            self.input_data["Web Content3"] = web_result.get('content', '')
             search_content = web_result.get('content', '') if web_result else ''
             prompt = self.prompt_manager.get_prompt_and_format(
                 'research_founder_background',
@@ -454,6 +454,8 @@ class DealAnalyzer:
                 message_text=message_text
             )
             founder_info = await self._get_completion(prompt, "founder_background")
+            self.input_data["AI Prompt4"] = prompt
+            self.input_data["AI Content4"] = json.dumps(founder_info, ensure_ascii=False)
             return {
                 **founder_info,
                 "LinkedIn URL": "N/A"
@@ -542,14 +544,6 @@ class DealAnalyzer:
                 if hasattr(response, 'citations'):
                     citations = response.citations
             
-            # 更新 input_data
-            # 找到第一個空的 Web Prompt 位置
-            for i in range(1, 4):
-                if not self.input_data[f"Web Prompt{i}"]:
-                    self.input_data[f"Web Prompt{i}"] = query
-                    self.input_data[f"Web Content{i}"] = text_content
-                    break
-            
             self.logger.info("\n回應內容:")
             self.logger.info(text_content)
             
@@ -602,11 +596,7 @@ class DealAnalyzer:
                 self.input_data["Category Content"] = safe_content
             else:
                 # 其他情況，找第一個空的 AI Prompt 位置
-                for i in range(1, 6):
-                    if not self.input_data[f"AI Prompt{i}"]:
-                        self.input_data[f"AI Prompt{i}"] = prompt
-                        self.input_data[f"AI Content{i}"] = json.dumps(response, ensure_ascii=False)
-                        break
+                pass
             
             self.logger.info(f"Raw completion response: {completion.choices[0].message.content}")
             return response
