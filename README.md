@@ -165,7 +165,7 @@ python main.py
 
 ## 系統流程圖
 
-![VC Bot 工作流程圖](./Process%20Chart/Process01.png)
+![VC Bot 工作流程圖](.VC_CRM/Process%20Chart/Process01.png)
 
 ## 注意事項
 
