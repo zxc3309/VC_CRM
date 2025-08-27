@@ -30,8 +30,12 @@ class DocManager:
             if not base64_content:
                 raise ValueError("未設定 SERVICE_ACCOUNT_BASE64 環境變數")
             
-            # 解碼 base64 內容
-            service_account_info = json.loads(base64.b64decode(base64_content).decode())
+            # 解碼 base64 內容，增加錯誤處理
+            try:
+                decoded_content = base64.b64decode(base64_content).decode('utf-8')
+                service_account_info = json.loads(decoded_content)
+            except Exception as e:
+                raise ValueError(f"SERVICE_ACCOUNT_BASE64 解碼失敗: {str(e)}")
             
             self.credentials = service_account.Credentials.from_service_account_info(
                 service_account_info,

@@ -20,10 +20,22 @@ load_dotenv(override=True)
 nest_asyncio.apply()
 
 # Configure logging
+# 從環境變數讀取日誌等級，預設為 INFO
+log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=getattr(logging, log_level)
 )
+
+# 降低第三方套件的日誌等級，減少冗餘訊息
+loggers_to_quiet = [
+    'httpx', 'telegram', 'urllib3', 'asyncio', 
+    'playwright', 'websockets', 'aiohttp', 'requests',
+    'telegram.ext.Application', 'telegram.ext.Updater'
+]
+for logger_name in loggers_to_quiet:
+    logging.getLogger(logger_name).setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 class DealSourcingBot:
