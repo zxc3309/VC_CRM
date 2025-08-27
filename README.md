@@ -9,6 +9,8 @@
   - 自動提取公司名稱、產品描述、創始人信息等
   - 智能理解業務進展（Traction）
   - 分析相關網址、簡報內容和附件
+  - **自動產生觀察（Observation）**：AI 分析創辦人背景和公司資訊後的關鍵洞察
+  - **自動產生建議問題（Suggested Questions）**：為首次會談準備的智能問題清單
 - 使用 OpenAI 的網路搜索功能：
   - 提示詞可線上更動
   - 自動搜索並驗證公司信息
@@ -17,7 +19,8 @@
 - 自動整理到 Google Docs：
   - 結構化提供公司資訊
   - 結構化提供創辦人資訊
-  - 提供面談提問清單參考
+  - **AI 觀察重點（Observation）**
+  - **智能建議問題清單（Suggested Questions）**
 - 自動整理到 Google Sheets：
   - 結構化的數據展示
   - 可點擊的參考來源
@@ -25,6 +28,33 @@
 - 可調整的 AI 使用情境
   - 可調整「資訊整理」與「次級資料搜尋」所使用的 AI 模型
   - 可調整「資訊整理」與「次級資料搜尋」所使用的 AI Prompt
+
+## 支援的資料來源
+
+系統可以同時處理多種資料來源，自動識別並擷取內容：
+
+1. **DocSend 文件**
+   - 自動填入 email 和密碼（支援 `pw:` 或 `password:` 格式）
+   - 擷取投影片內容和圖片
+   - 支援 OCR 圖片文字辨識
+
+2. **PDF/PPTX 附件**
+   - 直接上傳到 Telegram
+   - 自動提取文字內容
+   - 圖片型 PDF 支援 OCR
+
+3. **Google Drive 檔案**
+   - 支援 Google Drive 和 Google Docs 連結
+   - 自動下載並分析內容
+
+4. **一般網站**
+   - 自動擷取網頁內容
+   - 支援多分頁網站（如 GitBook、Notion）
+   - 智能識別 Pitch Deck 頁面
+
+5. **純文字訊息**
+   - 直接分析文字內容
+   - 提取關鍵資訊
 
 ## 系統要求
 
@@ -81,16 +111,30 @@ python main.py
 
 2. 在 Telegram 中：
    - 搜索你的機器人
-   - 直接發送投資機會相關信息
-   - 機器人會自動：
-     1. 分析訊息內容
-     2. 搜索並驗證公司信息
-     3. 整理所有信息到 Google Doc 與 Google Sheets
-     4. 回覆處理結果和表格連結
+   - 直接發送投資機會相關信息（支援文字、連結、附件）
+   - 機器人會自動執行以下流程：
+     1. **資料擷取**：識別並處理各種資料來源（DocSend、PDF、網站等）
+     2. **內容分析**：使用 AI 分析公司和創辦人資訊
+     3. **網路搜索**：搜索並驗證公司相關資訊
+     4. **智能洞察**：產生觀察重點和建議問題
+     5. **文件產生**：建立結構化的 Google Doc
+     6. **資料儲存**：更新 Google Sheets 資料庫
+     7. **回覆結果**：提供 Doc 和 Sheets 連結
 
    #### 支援指令
    - `/reload_prompt`：重新載入 Google Sheets 的提示詞（Prompt），適用於你在 Google Sheets 更新了 prompt 後，想讓 bot 立即同步最新內容。
    - `/show_prompt`：查詢目前可用的 prompt 列表，方便檢查與調整 prompt 設定。
+
+   #### 訊息範例
+   ```
+   TrueNorth 是一家 AI 公司
+   創辦人：John Doe
+   
+   Deck: https://docsend.com/view/example
+   pw: password123
+   
+   網站：https://truenorth.com
+   ```
 
 ## API 使用說明
 
@@ -167,6 +211,23 @@ python main.py
 
 ![VC Bot 工作流程圖](VC_CRM/Process%20Chart/Process01.png)
 
+### 詳細流程說明
+
+1. **訊息接收**：Telegram Bot 接收使用者訊息（文字/連結/附件）
+2. **資料來源識別**：自動識別 DocSend、PDF、Google Drive、網站或純文字
+3. **內容擷取**：
+   - DocSend：自動填入密碼，擷取投影片內容
+   - PDF/PPTX：提取文字，必要時使用 OCR
+   - 網站：智能擷取網頁內容
+4. **AI 分析**：提取公司名稱、創辦人資訊、業務描述
+5. **網路搜索**：驗證並補充公司資訊
+6. **智能洞察**：
+   - 產生觀察重點（Observation）
+   - 建議會談問題（Suggested Questions）
+7. **文件產出**：建立結構化 Google Doc
+8. **資料庫更新**：儲存至 Google Sheets
+9. **結果回覆**：提供文件連結給使用者
+
 ## 注意事項
 
 - 確保 OpenAI API key 有足夠的額度
@@ -181,6 +242,27 @@ python main.py
 2. 確認 API 密鑰是否有效
 3. 查看日誌文件了解詳細錯誤信息
 4. 確保網絡連接正常
+
+### 特定問題排除
+
+#### 觀察和問題不顯示
+如果 Google Doc 中沒有顯示 "Observation" 和 "Suggested Questions"：
+1. 檢查日誌中是否有 `[suggest_questions]` 相關訊息
+2. 確認 Google Sheet 中的 `suggest_questions` prompt 格式正確
+3. 可執行測試腳本驗證：
+   ```bash
+   python3 test_observation_question.py
+   ```
+
+#### DocSend 無法存取
+1. 確認環境變數中的 `DOCSEND_EMAIL` 已設定
+2. 檢查訊息中是否包含正確的密碼格式（`pw:` 或 `password:`）
+3. 查看日誌中的 DocSend 處理訊息
+
+#### 附件處理失敗
+1. 確認 Tesseract OCR 已正確安裝
+2. 檢查檔案大小是否超過 Telegram 限制（20MB）
+3. 確認檔案格式為支援的類型（PDF、PPTX、PPT）
 
 ## 貢獻指南
 

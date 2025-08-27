@@ -128,14 +128,34 @@ class DocManager:
             )
 
             result = response.choices[0].message.content
+            logger.info(f"[suggest_questions] AI 原始回應長度: {len(result)} 字符")
+            logger.debug(f"[suggest_questions] AI 原始回應內容: {result[:500]}...")  # 顯示前500字符
+            
+            # 初始化 result_json，避免後續引用錯誤
+            result_json = {}
+            
             try:
                 result_json = json.loads(result)
+                logger.info(f"[suggest_questions] 成功解析 JSON，包含欄位: {list(result_json.keys())}")
+                
                 questions = result_json.get("questions", [])
                 observation = result_json.get("observation", [])
+                
+                logger.info(f"[suggest_questions] 提取到 {len(questions)} 個問題")
+                logger.info(f"[suggest_questions] 提取到 {len(observation)} 個觀察")
+                
+                if not questions:
+                    logger.warning("[suggest_questions] ⚠️ 未找到 'questions' 欄位或欄位為空")
+                if not observation:
+                    logger.warning("[suggest_questions] ⚠️ 未找到 'observation' 欄位或欄位為空")
+                    
             except Exception as e:
                 questions = []
                 observation = []
-                logger.error(f"解析 AI 回傳問題/觀察時發生錯誤：{str(e)}")
+                # 解析失敗時，設置空的 result_json
+                result_json = {"questions": [], "observation": [], "error": str(e)}
+                logger.error(f"[suggest_questions] ❌ 解析 AI 回傳問題/觀察時發生錯誤：{str(e)}")
+                logger.error(f"[suggest_questions] AI 返回內容: {result[:200]}...")
 
             # 新增：把 prompt 和結果放到 input_data
             input_data["AI Prompt5"] = prompt

@@ -1,8 +1,13 @@
-# Debug files
-debug_*.html
-debug_*.png
-tmp/
-*.log
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Credentials
+service_account.json
+credentials/
+*.pem
+*.key
 
 # Python
 __pycache__/
@@ -11,6 +16,8 @@ __pycache__/
 *.so
 .Python
 env/
+venv/
+ENV/
 build/
 develop-eggs/
 dist/
@@ -27,27 +34,31 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
-venv/
-ENV/
-
 # IDE
-.idea/
 .vscode/
+.idea/
 *.swp
 *.swo
+*~
+.DS_Store
 
 # Logs
 *.log
 logs/
 
-# Environment variables
-.env
-
 # Temporary files
+tmp/
+temp/
 *.tmp
-*.temp
 
-# OS
-.DS_Store
-Thumbs.db 
+# Debug files
+debug_*.html
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Backup files
+*_backup_*
+VC_CRM_backup_*/
