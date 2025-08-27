@@ -50,9 +50,9 @@ class GoogleSheetPromptManager:
 
     def __init__(self, spreadsheet_name: str = None, sheet_index: int = 0):
         load_dotenv(override=True)
-        sheet_id = spreadsheet_name or os.getenv('PROMPT_MANAGER')
+        self.sheet_id = spreadsheet_name or os.getenv('PROMPT_MANAGER')
         
-        if not sheet_id:
+        if not self.sheet_id:
             raise ValueError("未設定 PROMPT_MANAGER 環境變數")
         
         # 更新權限範圍
@@ -62,7 +62,22 @@ class GoogleSheetPromptManager:
             'https://spreadsheets.google.com/feeds'
         ]
         self.SPREADSHEET_ID = os.getenv('GOOGLE_SHEETS_ID')
-        self.sheet_id = sheet_id
+        
+        # 延遲初始化 - 先不連接 Google API
+        self.target_sheet = None
+        self.credentials = None
+        self.prompts = {}
+        self._initialization_error = None
+        
+        logger.info(f"✅ Prompt Manager 已建立 (延遲連接模式)，Sheet ID: {self.sheet_id}")
+
+    def _initialize_connection(self):
+        """延遲初始化 Google API 連接"""
+        if self.target_sheet is not None:
+            return  # 已經初始化
+        
+        if self._initialization_error is not None:
+            raise self._initialization_error  # 之前初始化失敗
         
         try:
             # 從環境變數讀取 base64 編碼的 service account
@@ -103,34 +118,38 @@ class GoogleSheetPromptManager:
             
             # 直接開啟指定 ID 的試算表，避免使用 openall() 造成的認證問題
             try:
-                self.target_sheet = client.open_by_key(sheet_id)
+                self.target_sheet = client.open_by_key(self.sheet_id)
                 logger.info(f"✅ 成功連接到試算表: {self.target_sheet.title}")
             except Exception as e:
-                raise ValueError(f"無法開啟試算表 ID {sheet_id}: {str(e)}")
-            
-            # 初始化 prompts 字典為空
-            self.prompts = {}
+                raise ValueError(f"無法開啟試算表 ID {self.sheet_id}: {str(e)}")
             
             # Railway 部署環境檢查
             self._log_environment_info()
             
-            logger.info(f"✅ 成功初始化 Prompt Manager，等待首次讀取")
+            logger.info(f"✅ 成功初始化 Google API 連接")
             
         except Exception as e:
-            logger.error(f"❌ 初始化失敗: {str(e)}")
+            logger.error(f"❌ Google API 連接失敗: {str(e)}")
             # 提供更詳細的錯誤訊息協助 Railway 部署診斷
             if "Invalid JWT Signature" in str(e) or "invalid_grant" in str(e):
                 logger.error("💡 建議檢查項目:")
                 logger.error("   1. SERVICE_ACCOUNT_BASE64 環境變數是否正確設定")
-                logger.error("   2. Google 服務帳戶金鑰是否已過期")
+                logger.error("   2. Google 服務帳戶金鑰是否已過期 - 需要重新生成")
                 logger.error("   3. 服務帳戶是否有 Google Sheets 和 Drive 權限")
                 logger.error("   4. 時間同步問題 (Railway 伺服器時間)")
+                logger.error("💡 請執行 diagnose_service_account.py 進行詳細診斷")
+            
+            # 將錯誤儲存，避免重複嘗試
+            self._initialization_error = e
             raise
 
     def _load_prompts_if_needed(self):
         """如果 prompts 為空，則從 Google Sheets 載入"""
         if not self.prompts:
             try:
+                # 確保 Google API 連接已初始化
+                self._initialize_connection()
+                
                 # 使用第一個工作表
                 sheet = self.target_sheet.worksheets()[0]
                 records = sheet.get_all_records()
@@ -192,8 +211,11 @@ class GoogleSheetPromptManager:
     def reload_prompts(self):
         """手動重新載入 Google Sheet 中的 prompt"""
         try:
+            # 重置連接狀態，強制重新初始化
+            self.target_sheet = None
+            self._initialization_error = None
             # 清空 prompts 字典，強制下次讀取時重新載入
             self.prompts = {}
-            logger.info(f"🔄 已清空 prompts 快取，下次讀取時將重新載入")
+            logger.info(f"🔄 已清空 prompts 快取和連接，下次讀取時將重新載入")
         except Exception as e:
             logger.error(f"❌ 重新載入提示詞失敗: {str(e)}")
