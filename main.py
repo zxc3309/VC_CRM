@@ -151,6 +151,7 @@ class DealSourcingBot:
             
             #Save to Google Doc
             logger.info("Saving to Google Doc...")
+            doc_url = None  # 預設值
             try:
                 # 將 deal_data 和 input_data 都傳給 doc_manager
                 result = await self.doc_manager.create_doc(deal_data, input_data)
@@ -160,10 +161,11 @@ class DealSourcingBot:
             except Exception as e:
                 logger.error(f"Error saving to Google Doc: {str(e)}")
                 logger.error(traceback.format_exc())
-                raise
+                # 不再 raise，允許繼續處理
             
             # Save to Google Sheets
             logger.info("Saving to Google Sheets...")
+            sheet_url = None  # 預設值
             try:
                 # 將 deal_data 和 input_data 都傳給 sheets_manager
                 sheet_url = await self.sheets_manager.save_deal(deal_data, input_data, doc_url)
@@ -171,7 +173,7 @@ class DealSourcingBot:
             except Exception as e:
                 logger.error(f"Error saving to sheets: {str(e)}")
                 logger.error(traceback.format_exc())
-                raise
+                # 不再 raise，允許繼續處理
             
             # Format founder information for the response
             founder_names = deal_data.get('founder_name', [])
@@ -183,17 +185,59 @@ class DealSourcingBot:
             
             # Reply with results
             try:
-                await processing_msg.edit_text(
-                    f"✅ Analysis complete!\n\n"
-                    f"Company: {deal_data.get('company_name', 'N/A')}{founder_text}\n\n"
-                    f"Log saved to: {doc_url}\n\n"
-                    f"Details saved to: {sheet_url}"
-                )
+                # 根據服務狀態建立回應訊息
+                if doc_url and sheet_url:
+                    # 所有服務正常
+                    response_msg = (
+                        f"✅ Analysis complete!\n\n"
+                        f"Company: {deal_data.get('company_name', 'N/A')}{founder_text}\n\n"
+                        f"Log saved to: {doc_url}\n\n"
+                        f"Details saved to: {sheet_url}"
+                    )
+                elif not doc_url and not sheet_url:
+                    # Google 服務都失敗
+                    response_msg = (
+                        f"⚠️ Analysis complete (with limited functionality)\n\n"
+                        f"Company: {deal_data.get('company_name', 'N/A')}{founder_text}\n\n"
+                        f"❌ Google services are temporarily unavailable.\n"
+                        f"The analysis has been completed but could not be saved to Google Docs/Sheets.\n\n"
+                        f"📊 Analysis Summary:\n"
+                        f"• Category: {deal_data.get('company_category', 'N/A')}\n"
+                        f"• Description: {deal_data.get('company_info', {}).get('company_one_liner', 'N/A')}\n"
+                        f"• Founders: {', '.join(deal_data.get('founder_name', [])) if deal_data.get('founder_name') else 'N/A'}\n\n"
+                        f"🔧 Our team is working to restore Google services."
+                    )
+                else:
+                    # 部分服務失敗
+                    response_msg = (
+                        f"⚠️ Analysis partially complete\n\n"
+                        f"Company: {deal_data.get('company_name', 'N/A')}{founder_text}\n\n"
+                    )
+                    if doc_url:
+                        response_msg += f"✅ Log saved to: {doc_url}\n"
+                    else:
+                        response_msg += f"❌ Could not save to Google Docs\n"
+                    
+                    if sheet_url:
+                        response_msg += f"✅ Details saved to: {sheet_url}\n"
+                    else:
+                        response_msg += f"❌ Could not save to Google Sheets\n"
+                    
+                    response_msg += f"\n🔧 Some services are being restored."
+                
+                await processing_msg.edit_text(response_msg)
                 logger.info("Response sent to user")
             except Exception as e:
                 logger.error(f"Error sending response: {str(e)}")
                 logger.error(traceback.format_exc())
-                raise
+                # 嘗試發送基本錯誤訊息
+                try:
+                    await processing_msg.edit_text(
+                        f"❌ Error processing your request.\n"
+                        f"Please try again later or contact support."
+                    )
+                except:
+                    pass  # 如果連這個都失敗，就放棄
             
         except Exception as e:
             error_msg = f"Error processing message: {str(e)}"
