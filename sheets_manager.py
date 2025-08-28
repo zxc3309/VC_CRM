@@ -1,5 +1,4 @@
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import os
 from dotenv import load_dotenv
 import logging
@@ -65,11 +64,7 @@ class GoogleSheetsManager:
                 scopes=self.SCOPES
             )
             
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(
-                service_account_info,
-                self.SCOPES
-            )
-            self.client = gspread.authorize(creds)
+            self.client = gspread.authorize(self.credentials)
             self.sheet = self.client.open_by_key(self.SPREADSHEET_ID).sheet1
             
             self._initialized = True

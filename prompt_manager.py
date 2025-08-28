@@ -1,5 +1,4 @@
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import os
 from dotenv import load_dotenv
 import logging
@@ -110,11 +109,7 @@ class GoogleSheetPromptManager:
                 scopes=self.SCOPES
             )
             
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(
-                service_account_info,
-                self.SCOPES
-            )
-            client = gspread.authorize(creds)
+            client = gspread.authorize(self.credentials)
             
             # 直接開啟指定 ID 的試算表，避免使用 openall() 造成的認證問題
             try:

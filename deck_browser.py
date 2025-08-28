@@ -24,30 +24,44 @@ load_dotenv(override=True)
 
 # Pytesseract Path - 支援多種可能的路徑
 tesseract_cmd = os.getenv('TESSERACT_CMD') or os.getenv('TESSERACT') 
+tesseract_found = False
+
 if tesseract_cmd:
-    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
-else:
+    # 使用環境變數指定的路徑
+    if os.path.exists(tesseract_cmd) or shutil.which(tesseract_cmd):
+        pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+        tesseract_found = True
+    else:
+        # 環境變數路徑無效，嘗試其他路徑
+        tesseract_cmd = None
+
+if not tesseract_found:
     # 嘗試常見路徑
     possible_paths = [
-        'tesseract',  # PATH 中
+        '/root/.nix-profile/bin/tesseract',  # Railway/Nix 環境
         '/usr/bin/tesseract',  # Ubuntu/Debian
+        '/usr/local/bin/tesseract',  # 標準 Unix 位置
         '/bin/tesseract',  # 某些 Linux 發行版
         '/opt/homebrew/bin/tesseract',  # macOS Homebrew
-        '/root/.nix-profile/bin/tesseract'  # 原本的預設值
+        'tesseract'  # PATH 中（最後嘗試）
     ]
     
     for path in possible_paths:
-        import shutil
         if shutil.which(path) or os.path.exists(path):
             pytesseract.pytesseract.tesseract_cmd = path
+            tesseract_found = True
             break
-    else:
+    
+    if not tesseract_found:
         # 如果都找不到，使用預設值但會在後續處理中優雅降級
         pytesseract.pytesseract.tesseract_cmd = 'tesseract'
 
 # 配置日誌
 logger = logging.getLogger(__name__)
-logger.info(f"Final Tesseract path: {pytesseract.pytesseract.tesseract_cmd}")
+if tesseract_found:
+    logger.info(f"✅ Tesseract OCR 找到: {pytesseract.pytesseract.tesseract_cmd}")
+else:
+    logger.warning(f"⚠️ Tesseract OCR 未找到，OCR 功能將被停用")
 
 logger.setLevel(logging.INFO)
 
