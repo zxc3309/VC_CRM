@@ -71,6 +71,31 @@ class DealAnalyzer:
         # 初始化 model 變數（會在需要時即時讀取）
         self.ai_model = None
         self.search_model = None
+        
+    def _supports_temperature(self, model: str) -> bool:
+        """檢查模型是否支援 temperature 參數"""
+        model_lower = model.lower()
+        # GPT-5 系列模型不支援 temperature
+        if model_lower.startswith("gpt-5") or model_lower.startswith("o1") or model_lower.startswith("o3"):
+            return False
+        return True
+    
+    def _prepare_completion_params(self, model: str, messages: list, **kwargs) -> dict:
+        """根據模型類型準備 API 呼叫參數"""
+        params = {
+            "model": model,
+            "messages": messages
+        }
+        
+        # 只有支援 temperature 的模型才添加此參數
+        if self._supports_temperature(model):
+            params["temperature"] = kwargs.get("temperature", 0.7)
+        
+        # 添加其他支援的參數
+        if "response_format" in kwargs:
+            params["response_format"] = kwargs["response_format"]
+            
+        return params
 
 
     def extract_deck_link(self, message: str) -> Optional[str]:
@@ -300,7 +325,7 @@ class DealAnalyzer:
                     industry_info=industry_info
                 )
                 
-                completion = await self.openai_client.chat.completions.create(
+                params = self._prepare_completion_params(
                     model=self.ai_model,
                     messages=[
                         {"role": "system", "content": "你是一個專門提取創始人信息的 AI 分析師。"},
@@ -308,6 +333,8 @@ class DealAnalyzer:
                     ],
                     response_format={"type": "json_object"}
                 )
+                
+                completion = await self.openai_client.chat.completions.create(**params)
                 
                 result = json.loads(completion.choices[0].message.content)
                 self.input_data["AI Prompt2"] = prompt
@@ -522,17 +549,23 @@ class DealAnalyzer:
                 # GPT-4/3.5 使用 chat.completions.create API
                 self.logger.info("使用 Format1")
                 
-                response = await self.openai_client.responses.create(
-                    model=self.search_model,
-                    input=[{"role": "user", "content": query}],
-                    tools=[{
-                            "type": "web_search",
-                            "search_context_size": "medium"
-                            }],
-                    temperature=0,
-                    top_p=1,
-                    store=True
-                    )
+                # 根據模型類型決定是否包含 temperature 參數
+                params = {
+                    "model": self.search_model,
+                    "input": [{"role": "user", "content": query}],
+                    "tools": [{
+                        "type": "web_search",
+                        "search_context_size": "medium"
+                    }],
+                    "top_p": 1,
+                    "store": True
+                }
+                
+                # 只有支援 temperature 的模型才添加此參數
+                if self._supports_temperature(self.search_model):
+                    params["temperature"] = 0
+                
+                response = await self.openai_client.responses.create(**params)
                 
                 # 獲取搜索結果
                 if hasattr(response, 'output_text'):
@@ -572,7 +605,7 @@ class DealAnalyzer:
     async def _get_completion(self, prompt: str, result_type: str = "general") -> Dict[str, Any]:
         """使用 OpenAI API 獲取完成結果"""
         try:
-            completion = await self.openai_client.chat.completions.create(
+            params = self._prepare_completion_params(
                 model=self.ai_model,
                 messages=[
                     {"role": "system", "content": "你是一個專門分析公司信息的 AI 分析師。"},
@@ -580,6 +613,8 @@ class DealAnalyzer:
                 ],
                 response_format={"type": "json_object"}
             )
+            
+            completion = await self.openai_client.chat.completions.create(**params)
             
             # 解析 JSON 響應
             response = json.loads(completion.choices[0].message.content)

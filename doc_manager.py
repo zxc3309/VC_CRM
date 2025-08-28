@@ -147,15 +147,22 @@ class DocManager:
             # 取得 AI model
             ai_model = getattr(self, 'ai_model', None) or input_data.get('ai_model') or "gpt-4.1"
 
-            response = await self.openai_client.chat.completions.create(
-                model=ai_model,
-                messages=[
+            # 根據模型類型準備參數
+            params = {
+                "model": ai_model,
+                "messages": [
                     {"role": "system", "content": "You are a professional VC analyst."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,
-                response_format={"type": "json_object"}
-            )
+                "response_format": {"type": "json_object"}
+            }
+            
+            # 檢查模型是否支援 temperature 參數
+            model_lower = ai_model.lower()
+            if not (model_lower.startswith("gpt-5") or model_lower.startswith("o1") or model_lower.startswith("o3")):
+                params["temperature"] = 0.7
+
+            response = await self.openai_client.chat.completions.create(**params)
 
             result = response.choices[0].message.content
             logger.info(f"[suggest_questions] AI 原始回應長度: {len(result)} 字符")
