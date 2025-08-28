@@ -24,6 +24,30 @@ class DocManager:
             'https://www.googleapis.com/auth/documents'
         ]
         
+        # 延遲初始化 - 先不連接 Google API
+        self.credentials = None
+        self.service = None
+        self.docs_service = None
+        self.drive_service = None
+        self._initialized = False
+        self._initialization_error = None
+        
+        # OpenAI 可以立即初始化 (不依賴 Google)
+        self.openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
+        # 使用傳入的 prompt_manager 或建立新的
+        self.prompt_manager = prompt_manager or GoogleSheetPromptManager()
+        
+        logger.info("✅ DocManager 已建立 (延遲連接模式)")
+    
+    def _initialize_services(self):
+        """延遲初始化 Google API 連接"""
+        if self._initialized:
+            return  # 已經初始化
+        
+        if self._initialization_error is not None:
+            raise self._initialization_error  # 之前初始化失敗
+        
         try:
             # 從環境變數讀取 base64 編碼的 service account
             base64_content = os.getenv('SERVICE_ACCOUNT_BASE64')
@@ -42,19 +66,21 @@ class DocManager:
                 scopes=self.SCOPES
             )
             
+            # 建立所有 Google API 服務
             self.service = build('drive', 'v3', credentials=self.credentials)
-            logger.info("✅ 成功連接到 Google Drive")
+            self.docs_service = build('docs', 'v1', credentials=self.credentials, cache_discovery=False)
+            self.drive_service = build('drive', 'v3', credentials=self.credentials, cache_discovery=False)
+            
+            self._initialized = True
+            logger.info("✅ 成功連接到 Google Drive 和 Docs API")
             
         except Exception as e:
-            logger.error(f"❌ 初始化失敗: {str(e)}")
+            logger.error(f"❌ Google API 初始化失敗: {str(e)}")
+            if "Invalid JWT Signature" in str(e) or "invalid_grant" in str(e):
+                logger.error("💡 請重新生成 Google Service Account 金鑰")
+                logger.error("   詳見 service_account_regeneration_guide.md")
+            self._initialization_error = e
             raise
-
-        self.docs_service = build('docs', 'v1', credentials=self.credentials, cache_discovery=False)
-        self.drive_service = build('drive', 'v3', credentials=self.credentials, cache_discovery=False)
-        self.openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        
-        # 使用傳入的 prompt_manager 或建立新的
-        self.prompt_manager = prompt_manager or GoogleSheetPromptManager()
 
     def stringify(self, field):
         if isinstance(field, list):
@@ -171,6 +197,9 @@ class DocManager:
             return [], []
 
     async def create_doc(self, deal_data, input_data):
+        # 確保 Google API 已初始化
+        self._initialize_services()
+        
         # 資料前處理
         all_founder_names = ", ".join(deal_data.get("founder_name", [])) if deal_data.get("founder_name") else "N/A"
         founder_info = deal_data.get("founder_info", {})

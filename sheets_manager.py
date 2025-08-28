@@ -27,6 +27,26 @@ class GoogleSheetsManager:
             'https://spreadsheets.google.com/feeds'
         ]
         
+        # 延遲初始化 - 先不連接 Google API
+        self.credentials = None
+        self.client = None
+        self.sheet = None
+        self._initialized = False
+        self._initialization_error = None
+        
+        # 儲存傳入的 prompt_manager
+        self.prompt_manager = prompt_manager
+        
+        logger.info(f"✅ GoogleSheetsManager 已建立 (延遲連接模式)，Sheet ID: {self.SPREADSHEET_ID}")
+    
+    def _initialize_connection(self):
+        """延遲初始化 Google Sheets 連接"""
+        if self._initialized:
+            return  # 已經初始化
+        
+        if self._initialization_error is not None:
+            raise self._initialization_error  # 之前初始化失敗
+        
         try:
             # 從環境變數讀取 base64 編碼的 service account
             base64_content = os.getenv('SERVICE_ACCOUNT_BASE64')
@@ -51,19 +71,27 @@ class GoogleSheetsManager:
             )
             self.client = gspread.authorize(creds)
             self.sheet = self.client.open_by_key(self.SPREADSHEET_ID).sheet1
+            
+            self._initialized = True
             logger.info("✅ 成功連接到 Google Sheets")
             
         except Exception as e:
-            logger.error(f"❌ 初始化失敗: {str(e)}")
+            logger.error(f"❌ Google Sheets 連接失敗: {str(e)}")
+            if "Invalid JWT Signature" in str(e) or "invalid_grant" in str(e):
+                logger.error("💡 請重新生成 Google Service Account 金鑰")
+                logger.error("   詳見 service_account_regeneration_guide.md")
+            self._initialization_error = e
             raise
     
     async def save_deal(self, deal_data, input_data, doc_url):
         """Save simplified deal info (opportunity, description, log, deck) to Google Sheets."""
+        # 確保 Google Sheets 已初始化
+        self._initialize_connection()
+        
         service = build('sheets', 'v4', credentials=self.credentials, cache_discovery=False)
 
-        # 使用正確的工作表名稱
-        prompt_manager = GoogleSheetPromptManager()
-        sheet_name = prompt_manager.get_prompt('main_sheet_name')
+        # 使用傳入的 prompt_manager，避免重複建立
+        sheet_name = self.prompt_manager.get_prompt('main_sheet_name') if self.prompt_manager else 'Sheet1'
         print(sheet_name)
 
         # 擷取必要資料
@@ -162,6 +190,9 @@ class GoogleSheetsManager:
 
     async def save_log(self, deal_data, input_data):
         """Save prompt engineering logs to the 'Prompt Engineering' tab."""
+        # 確保 Google Sheets 已初始化
+        self._initialize_connection()
+        
         service = build('sheets', 'v4', credentials=self.credentials, cache_discovery=False)
         
         # 準備要記錄的資訊
