@@ -1,11 +1,16 @@
 [phases.setup]
-nixPkgs = ['python311', 'tesseract', 'playwright']
+nixPkgs = ['python311', 'tesseract', 'playwright', 'imagemagick', 'poppler_utils']
 
 [phases.build]
 cmds = [
   'pip install -r requirements.txt',
   'playwright install --with-deps'
 ]
+
+# 設定環境變數
+[variables]
+# Railway 可能的 Tesseract 路徑
+TESSERACT_CMD = 'tesseract'
 
 [start]
 cmd = 'python main.py'

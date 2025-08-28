@@ -22,13 +22,31 @@ from prompt_manager import GoogleSheetPromptManager
 # Load environment variables
 load_dotenv(override=True)
 
-# Pytesseract Path
-pytesseract.pytesseract.tesseract_cmd = os.getenv('TESSERACT', '/root/.nix-profile/bin/tesseract')
+# Pytesseract Path - 支援多種可能的路徑
+tesseract_cmd = os.getenv('TESSERACT_CMD') or os.getenv('TESSERACT') 
+if tesseract_cmd:
+    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+else:
+    # 嘗試常見路徑
+    possible_paths = [
+        'tesseract',  # PATH 中
+        '/usr/bin/tesseract',  # Ubuntu/Debian
+        '/bin/tesseract',  # 某些 Linux 發行版
+        '/opt/homebrew/bin/tesseract',  # macOS Homebrew
+        '/root/.nix-profile/bin/tesseract'  # 原本的預設值
+    ]
+    
+    for path in possible_paths:
+        import shutil
+        if shutil.which(path) or os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            break
+    else:
+        # 如果都找不到，使用預設值但會在後續處理中優雅降級
+        pytesseract.pytesseract.tesseract_cmd = 'tesseract'
 
 # 配置日誌
 logger = logging.getLogger(__name__)
-# 5. 配置 Tesseract 路徑
-tesseract_path = os.getenv('TESSERACT', '/root/.nix-profile/bin/tesseract')
 logger.info(f"Final Tesseract path: {pytesseract.pytesseract.tesseract_cmd}")
 
 logger.setLevel(logging.INFO)
@@ -871,10 +889,21 @@ class DeckBrowser:
                                 # 下載圖片並進行 OCR
                                 response = requests.get(src)
                                 img = Image.open(BytesIO(response.content))
-                                ocr_text = pytesseract.image_to_string(img)
-                                if ocr_text.strip():
-                                    slides.append(f"[Slide {i+1} Image]\n{ocr_text.strip()}")
-                                    self.logger.info(f"成功對第 {i+1} 張投影片的圖片進行 OCR")
+                                
+                                try:
+                                    ocr_text = pytesseract.image_to_string(img)
+                                    if ocr_text.strip():
+                                        slides.append(f"[Slide {i+1} Image]\n{ocr_text.strip()}")
+                                        self.logger.info(f"成功對第 {i+1} 張投影片的圖片進行 OCR")
+                                except Exception as ocr_e:
+                                    # 處理 Tesseract 相關錯誤
+                                    if "TesseractNotFoundError" in str(type(ocr_e)) or "tesseract" in str(ocr_e).lower():
+                                        self.logger.warning(f"⚠️ Tesseract OCR 不可用，跳過第 {i+1} 張投影片圖片的文字提取")
+                                        slides.append(f"[Slide {i+1} Image]\n[OCR不可用 - 無法提取文字內容]")
+                                    else:
+                                        self.logger.warning(f"❌ OCR 處理失敗 (第 {i+1} 張): {str(ocr_e)}")
+                                        slides.append(f"[Slide {i+1} Image]\n[文字提取失敗]")
+                                
                             except Exception as e:
                                 self.logger.warning(f"OCR 失敗: {e}")
                 except Exception as e:
@@ -1380,12 +1409,22 @@ async def ocr_images_from_urls(image_urls: List[str]) -> str:
                 logger.warning(f"❌ 不支援的圖片 URL 格式: {url[:100]}...")
                 continue
 
-            # 使用 UTF-8 編碼處理文字
-            text = pytesseract.image_to_string(img, lang='eng')
-            if text and text.strip():
-                # 確保文字使用 UTF-8 編碼
-                text_encoded = text.encode('utf-8', errors='ignore').decode('utf-8')
-                results.append(f"[Slide {i+1}]\n{text_encoded}")
+            # 使用 UTF-8 編碼處理文字，添加 Tesseract 錯誤處理
+            try:
+                text = pytesseract.image_to_string(img, lang='eng')
+                if text and text.strip():
+                    # 確保文字使用 UTF-8 編碼
+                    text_encoded = text.encode('utf-8', errors='ignore').decode('utf-8')
+                    results.append(f"[Slide {i+1}]\n{text_encoded}")
+            except Exception as ocr_e:
+                # 處理 Tesseract 相關錯誤
+                if "TesseractNotFoundError" in str(type(ocr_e)) or "tesseract" in str(ocr_e).lower():
+                    logger.warning(f"⚠️ Tesseract OCR 不可用，跳過第 {i+1} 張圖片的文字提取: {str(ocr_e)}")
+                    results.append(f"[Slide {i+1}]\n[OCR不可用 - 無法提取文字內容]")
+                else:
+                    # 其他 OCR 錯誤
+                    logger.warning(f"❌ OCR 處理失敗 (第 {i+1} 張): {str(ocr_e)}")
+                    results.append(f"[Slide {i+1}]\n[文字提取失敗]")
                 
         except Exception as e:
             logger.warning(f"❌ 讀取圖片失敗: {str(e)}", exc_info=True)
