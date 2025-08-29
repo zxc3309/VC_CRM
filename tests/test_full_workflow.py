@@ -10,8 +10,8 @@ import sys
 import os
 from datetime import datetime
 
-# 添加 VC_CRM 目錄到路徑
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'VC_CRM'))
+# 添加父目錄到路徑
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from dotenv import load_dotenv
 from deck_browser import DeckBrowser
