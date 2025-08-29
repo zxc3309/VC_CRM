@@ -127,14 +127,28 @@ class DocManager:
     
     async def suggest_questions_with_gpt(self, deal_data, input_data) -> tuple[list[str], list[str]]:
         """根據 pitch deck 摘要，自動建議第一次接觸該新創應該問的問題"""
+        logger.info("[suggest_questions] 🚀 開始執行問題與觀察生成")
+        logger.info(f"[suggest_questions] 輸入的公司名稱: {deal_data.get('company_name', 'N/A')}")
+        
         try:
             # 從 prompt manager 獲取問題列表
+            logger.info("[suggest_questions] 📋 獲取問題列表模板...")
             question_list1 = self.prompt_manager.get_prompt('question_list1')
             question_list2 = self.prompt_manager.get_prompt('question_list2')
             question_list3 = self.prompt_manager.get_prompt('question_list3')
             question_list4 = self.prompt_manager.get_prompt('question_list4')
+            
+            # 檢查問題列表是否成功獲取
+            lists_status = []
+            for i, q_list in enumerate([question_list1, question_list2, question_list3, question_list4], 1):
+                if q_list:
+                    lists_status.append(f"question_list{i}: ✅")
+                else:
+                    lists_status.append(f"question_list{i}: ❌ 未找到")
+            logger.info(f"[suggest_questions] 問題列表狀態: {', '.join(lists_status)}")
 
             # 使用 GoogleSheetPromptManager 獲取提示詞
+            logger.info("[suggest_questions] 🔧 格式化主要 prompt...")
             prompt = self.prompt_manager.get_prompt_and_format(
                 'suggest_questions',
                 deal_data=json.dumps(deal_data, ensure_ascii=False),
@@ -143,9 +157,15 @@ class DocManager:
                 question_list3=question_list3,
                 question_list4=question_list4
             )
+            
+            if not prompt:
+                raise ValueError("無法獲取或格式化 suggest_questions prompt")
+            
+            logger.info(f"[suggest_questions] ✅ Prompt 格式化完成，長度: {len(prompt)} 字符")
 
             # 取得 AI model
             ai_model = getattr(self, 'ai_model', None) or input_data.get('ai_model') or "gpt-4.1"
+            logger.info(f"[suggest_questions] 🤖 使用 AI 模型: {ai_model}")
 
             # 根據模型類型準備參數
             params = {
@@ -161,7 +181,11 @@ class DocManager:
             model_lower = ai_model.lower()
             if not (model_lower.startswith("gpt-5") or model_lower.startswith("o1") or model_lower.startswith("o3")):
                 params["temperature"] = 0.7
+                logger.info("[suggest_questions] ✅ 已添加 temperature 參數")
+            else:
+                logger.info("[suggest_questions] ℹ️ 模型不支援 temperature 參數，已跳過")
 
+            logger.info("[suggest_questions] 📡 調用 OpenAI API...")
             response = await self.openai_client.chat.completions.create(**params)
 
             result = response.choices[0].message.content
@@ -198,9 +222,24 @@ class DocManager:
             input_data["AI Prompt5"] = prompt
             input_data["AI Content5"] = json.dumps(result_json, ensure_ascii=False)
 
+            logger.info(f"[suggest_questions] ✅ 成功完成問題與觀察生成！")
             return questions, observation
+            
         except Exception as e:
-            logger.error(f"生成問題時發生錯誤：{str(e)}")
+            logger.error(f"[suggest_questions] ❌ 生成問題時發生錯誤：{str(e)}")
+            logger.error(f"[suggest_questions] 錯誤類型: {type(e).__name__}")
+            
+            # 記錄錯誤到 input_data 以便追蹤
+            input_data["AI Prompt5"] = f"Error occurred during suggest_questions: {str(e)}"
+            input_data["AI Content5"] = json.dumps({
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "questions": [],
+                "observation": []
+            }, ensure_ascii=False)
+            
+            import traceback
+            logger.error(f"[suggest_questions] 完整錯誤堆疊: {traceback.format_exc()}")
             return [], []
 
     async def create_doc(self, deal_data, input_data):
