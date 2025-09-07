@@ -63,6 +63,55 @@
 - Google Cloud Service Account（開啟 Docs + Sheets API）
 - Telegram Bot Token
 
+## 專案結構
+
+```
+VC_CRM/
+├── main.py                      # 主程式入口點，啟動 Telegram Bot
+├── deal_analyzer.py             # 核心分析模組，處理 AI 分析與內容提取
+├── sheets_manager.py            # Google Sheets 管理模組
+├── doc_manager.py               # Google Docs 建立與格式化模組
+├── deck_browser.py              # DocSend 與網頁內容擷取模組
+├── prompt_manager.py            # AI 提示詞管理模組
+├── 
+├── tests/                       # 測試檔案目錄
+│   ├── test_full_workflow.py    # 完整工作流程測試
+│   ├── test_observation_*.py    # 觀察功能相關測試
+│   ├── test_railway_*.py        # Railway 部署測試
+│   └── test_*.py               # 其他功能測試
+├── 
+├── utils/                       # 工具模組目錄
+├── VC_CRM/                      # 專案資源目錄
+├── Process Chart/               # 流程圖資源
+├── 
+├── service_account.json         # Google Cloud Service Account 金鑰
+├── requirements.txt             # Python 相依套件清單
+├── Dockerfile                   # Docker 容器設定
+├── nixpacks.toml               # Nixpacks 部署設定
+├── install.py                   # 自動安裝腳本
+├── 
+├── diagnose_service_account.py  # Service Account 診斷工具
+├── fix_railway_deployment.md    # Railway 部署故障排除
+├── service_account_regeneration_guide.md  # Service Account 重新產生指南
+├── 
+└── .env                        # 環境變數設定檔（需自行建立）
+```
+
+### 核心模組說明
+
+- **main.py**: Telegram Bot 主程式，負責接收訊息並協調各模組
+- **deal_analyzer.py**: 核心 AI 分析引擎，整合 OpenAI API 進行智能分析
+- **sheets_manager.py**: 管理 Google Sheets 的資料寫入與格式化
+- **doc_manager.py**: 負責建立和格式化 Google Docs 文件
+- **deck_browser.py**: 處理 DocSend、PDF 和各種網頁內容的擷取
+- **prompt_manager.py**: 管理 AI 提示詞的載入和更新
+
+### 診斷工具
+
+- **diagnose_service_account.py**: 診斷 Google Service Account 設定問題
+- **fix_railway_deployment.md**: Railway 平台部署的故障排除指南
+- **service_account_regeneration_guide.md**: Service Account 重新設定教學
+
 ## 安裝步驟（若已線上部屬則可跳過）
 
 1. 克隆專案：
@@ -264,12 +313,160 @@ python main.py
 2. 檢查檔案大小是否超過 Telegram 限制（20MB）
 3. 確認檔案格式為支援的類型（PDF、PPTX、PPT）
 
+## 測試與開發
+
+### 執行測試
+
+專案包含多種測試檔案，位於 `tests/` 目錄中：
+
+```bash
+# 執行所有測試
+python -m pytest tests/
+
+# 執行特定測試
+python tests/test_full_workflow.py
+python tests/test_observation_question.py
+python tests/test_railway_auth.py
+```
+
+### 測試檔案說明
+
+- **test_full_workflow.py**: 完整工作流程整合測試
+- **test_observation_*.py**: AI 觀察與問題產生功能測試
+- **test_railway_*.py**: Railway 平台部署相關測試
+- **test_*_init.py**: 系統初始化與懶載入測試
+- **test_graceful_degradation.py**: 系統優雅降級測試
+- **test_ocr_handling.py**: OCR 文字識別功能測試
+- **test_logging.py**: 日誌系統設定測試
+
+### 診斷工具使用
+
+#### Service Account 診斷
+```bash
+python diagnose_service_account.py
+```
+此工具可診斷 Google Service Account 設定問題，包括：
+- JWT 簽章驗證
+- API 權限檢查
+- 憑證格式驗證
+
+#### 開發環境設定
+1. 複製環境變數設定檔：
+   ```bash
+   cp .env.example .env
+   ```
+2. 編輯 `.env` 填入開發用 API 金鑰
+3. 執行測試確保環境正確：
+   ```bash
+   python tests/test_simple_openai.py
+   ```
+
+### 程式碼品質檢查
+
+建議在提交程式碼前執行以下檢查：
+
+```bash
+# 檢查程式碼格式
+flake8 *.py
+
+# 檢查類型提示（如果專案使用 mypy）
+mypy *.py
+
+# 執行完整測試套件
+python -m pytest tests/ -v
+```
+
+### 偵錯提示
+
+- 使用 `LOG_LEVEL=DEBUG` 環境變數以查看詳細日誌
+- DocSend 處理失敗時，檢查是否有產生 debug HTML 檔案
+- 測試 OCR 功能時，確認 Tesseract 路徑設定正確
+
 ## 貢獻指南
 
 歡迎提交 Pull Requests 來改進這個項目。請確保：
 1. 代碼符合 PEP 8 規範
 2. 添加適當的測試
 3. 更新文檔以反映更改
+
+## 專案維護與清理
+
+### 定期清理作業
+
+為保持專案整潔，建議定期執行以下清理作業：
+
+#### 移除臨時檔案
+```bash
+# 移除系統產生的臨時檔案
+find . -name ".DS_Store" -delete
+find . -name "*.pyc" -delete
+find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null
+
+# 清理 debug 檔案（如果產生的話）
+rm -f debug_*.html
+rm -rf tmp/
+```
+
+#### 整理測試檔案
+- 所有測試檔案應放置於 `tests/` 目錄中
+- 診斷工具保持在根目錄，但需在 README 中說明用途
+- 移除過時的測試檔案
+
+#### 備份管理
+- 舊的備份目錄（如 `VC_CRM_backup_*`）可定期清理
+- 重要設定檔變更前請先備份
+- 建議使用 Git 而非本地備份目錄
+
+### 檔案組織原則
+
+#### 應保留的檔案
+- **核心模組**: `main.py`, `deal_analyzer.py`, `sheets_manager.py` 等
+- **設定檔案**: `requirements.txt`, `Dockerfile`, `.env.example`
+- **診斷工具**: `diagnose_service_account.py`
+- **文件指南**: `*.md` 檔案
+
+#### 可清理的檔案類型
+- 以 `debug_` 開頭的 HTML 檔案
+- `tmp/` 目錄中的臨時檔案  
+- 系統產生的 `.DS_Store` 檔案
+- 舊的備份目錄
+- 過時的測試檔案
+
+#### 檔案位置規範
+```
+根目錄/
+├── 核心程式檔案 (*.py)
+├── 設定檔案 (*.txt, *.toml, Dockerfile)
+├── 文件檔案 (*.md)
+├── 診斷工具 (diagnose_*.py)
+└── tests/           # 所有測試檔案
+    └── test_*.py
+```
+
+### 環境維護
+
+#### 依賴套件更新
+```bash
+# 檢查過時套件
+pip list --outdated
+
+# 更新 requirements.txt
+pip freeze > requirements.txt
+```
+
+#### 環境變數檢查
+定期檢查 `.env` 檔案是否包含所有必要設定：
+- TELEGRAM_BOT_TOKEN
+- OPENAI_API_KEY  
+- GOOGLE_SHEETS_ID
+- SERVICE_ACCOUNT_BASE64
+
+### 效能監控
+
+- 監控 OpenAI API 使用量和費用
+- 檢查 Google Sheets API 配額使用情況
+- 定期查看系統日誌檔案
+- 檢查 Telegram Bot 回應時間
 
 ## 授權
 

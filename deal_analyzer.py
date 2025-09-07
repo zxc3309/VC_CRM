@@ -415,19 +415,32 @@ class DealAnalyzer:
             if category_differentiation:
                 try:
                     category_prompt = (
-                        f"請根據下列分類依據，判斷公司所屬分類，僅以 JSON 格式回傳：{{\"category\": \"分類名稱\"}}\n"
+                        f"請根據下列分類依據，為公司選擇1-3個最相關的標籤（優先使用1個），僅以 JSON 格式回傳：{{\"categories\": [\"標籤1\"]}}\n"
                         f"【分類依據】\n{category_differentiation}\n"
                         f"【公司資訊】\n{company_info}\n"
                     )
                     self.logger.info(f"分類判斷 prompt: {category_prompt}")
                     category_result = await self._get_completion(category_prompt, result_type="category")
                     self.logger.info(f"AI 回傳分類結果: {category_result}")
-                    if isinstance(category_result, dict):
+                    
+                    # 處理多標籤結果
+                    if isinstance(category_result, dict) and 'categories' in category_result:
+                        categories_list = category_result['categories']
+                        if isinstance(categories_list, list):
+                            # 限制最多3個標籤
+                            categories_list = categories_list[:3]
+                            company_category = ", ".join(categories_list)  # 用逗號分隔
+                        else:
+                            company_category = str(categories_list)
+                    elif isinstance(category_result, dict):
+                        # 兼容舊格式
                         company_category = category_result.get('category') or list(category_result.values())[0]
                     elif isinstance(category_result, str):
                         company_category = category_result
+                        
                 except Exception as e:
                     self.logger.error(f"分類判斷失敗: {str(e)}")
+                    company_category = "N/A"
             else:
                 self.logger.warning("未取得 category_differentiation 內容，無法自動分類")
 
