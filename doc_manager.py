@@ -254,6 +254,7 @@ class DocManager:
         founder_companies = self.stringify(founder_info.get("previous_companies", "N/A"))
         founder_education = self.stringify(founder_info.get("education", "N/A"))
         founder_achievements = self.stringify(founder_info.get("achievements", "N/A"))
+        founder_linkedin_url = self.stringify(founder_info.get("LinkedIn URL", "N/A"))
         company_name = self.stringify(deal_data.get("company_name", "N/A"))
         company_category= self.stringify(deal_data.get("company_category", "N/A"))
         company_info = self.stringify(deal_data.get("company_info", {}).get("company_introduction", "N/A"))
@@ -308,6 +309,7 @@ class DocManager:
                 ("Founder Experience", founder_companies),
                 ("Founder Education", founder_education),
                 ("Founder Achievements", founder_achievements),
+                ("Founder LinkedIn Profile", founder_linkedin_url),
                 ("Observation", founder_observation),
                 ("Suggested Questions", suggested_questions),
                 ("Deck Link：", deck_link),

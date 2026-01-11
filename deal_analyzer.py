@@ -12,6 +12,7 @@ from playwright.async_api import async_playwright
 import random
 import urllib.parse
 from bs4 import BeautifulSoup
+from apify_linkedin import LinkedInSearcher
 
     
 class DealAnalyzer:
@@ -67,10 +68,18 @@ class DealAnalyzer:
         
         # 使用傳入的 prompt_manager 或建立新的
         self.prompt_manager = prompt_manager or GoogleSheetPromptManager()
-        
+
         # 初始化 model 變數（會在需要時即時讀取）
         self.ai_model = None
         self.search_model = None
+
+        # 初始化 LinkedIn Searcher
+        try:
+            self.linkedin_searcher = LinkedInSearcher()
+            self.logger.info("LinkedIn searcher initialized")
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize LinkedIn searcher: {e}")
+            self.linkedin_searcher = None
         
     def _supports_temperature(self, model: str) -> bool:
         """檢查模型是否支援 temperature 參數"""
@@ -473,7 +482,8 @@ class DealAnalyzer:
     async def _research_founder_background(self, founder_name: str, company_name: str, deck_data: str, industry_info: str, message_text: str) -> Dict[str, Any]:
         try:
             self.logger.info(f"研究 {founder_name} 的背景")
-            # 先進行一次 web search
+
+            # 步驟 1: 執行 Web Search
             web_query = self.prompt_manager.get_prompt_and_format(
                 'research_founder_background_query',
                 founder_name=founder_name,
@@ -485,21 +495,66 @@ class DealAnalyzer:
             self.input_data["Web Prompt3"] = web_query
             self.input_data["Web Content3"] = web_result.get('content', '')
             search_content = web_result.get('content', '') if web_result else ''
-            prompt = self.prompt_manager.get_prompt_and_format(
-                'research_founder_background',
-                founder_name=founder_name,
-                deck_data=deck_data,
-                search_content=search_content,
-                industry_info=industry_info,
-                message_text=message_text
-            )
+
+            # 步驟 2: 執行 LinkedIn 搜尋
+            linkedin_data = None
+            linkedin_url = "N/A"
+
+            if self.linkedin_searcher:
+                try:
+                    self.logger.info(f"使用 Apify 搜尋 LinkedIn Profile: {founder_name} @ {company_name}")
+                    linkedin_profile = await self.linkedin_searcher.search_founder_profile(
+                        founder_name=founder_name,
+                        company_name=company_name
+                    )
+
+                    if linkedin_profile:
+                        linkedin_data = self.linkedin_searcher.extract_experience_data(linkedin_profile)
+                        linkedin_url = linkedin_data.get('linkedin_url', 'N/A')
+                        self.logger.info(f"成功獲取 LinkedIn 資料: {linkedin_url}")
+                    else:
+                        self.logger.warning(f"未找到 {founder_name} 的 LinkedIn Profile")
+
+                except Exception as e:
+                    self.logger.warning(f"LinkedIn 搜尋失敗，將使用 Web Search 結果: {str(e)}")
+                    linkedin_data = None
+            else:
+                self.logger.info("LinkedIn searcher 未初始化，跳過 LinkedIn 搜尋")
+
+            # 步驟 3: 根據是否有 LinkedIn 資料選擇不同的 prompt
+            if linkedin_data:
+                # 有 LinkedIn 資料：使用增強版 prompt
+                prompt = self.prompt_manager.get_prompt_and_format(
+                    'research_founder_background_with_linkedin',
+                    founder_name=founder_name,
+                    deck_data=deck_data,
+                    search_content=search_content,
+                    linkedin_data=json.dumps(linkedin_data, ensure_ascii=False, indent=2),
+                    industry_info=industry_info,
+                    message_text=message_text
+                )
+            else:
+                # 沒有 LinkedIn 資料：使用原有 prompt
+                prompt = self.prompt_manager.get_prompt_and_format(
+                    'research_founder_background',
+                    founder_name=founder_name,
+                    deck_data=deck_data,
+                    search_content=search_content,
+                    industry_info=industry_info,
+                    message_text=message_text
+                )
+
             founder_info = await self._get_completion(prompt, "founder_background")
             self.input_data["AI Prompt4"] = prompt
             self.input_data["AI Content4"] = json.dumps(founder_info, ensure_ascii=False)
-            return {
-                **founder_info,
-                "LinkedIn URL": "N/A"
-            }
+
+            # 確保 LinkedIn URL 存在
+            if linkedin_data and linkedin_url != "N/A":
+                founder_info["LinkedIn URL"] = linkedin_url
+            elif "LinkedIn URL" not in founder_info:
+                founder_info["LinkedIn URL"] = "N/A"
+
+            return founder_info
 
         except Exception as e:
             self.logger.error(f"研究創始人背景時出錯: {str(e)}", exc_info=True)

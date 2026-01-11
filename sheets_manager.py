@@ -95,9 +95,14 @@ class GoogleSheetsManager:
         description = deal_data.get('company_info', {}).get('company_one_liner', 'N/A')  # Description
         deck_link_raw = deal_data.get('Deck Link', '')  # Deck 連結
 
+        # 擷取 Founder LinkedIn
+        founder_info = deal_data.get('founder_info', {})
+        founder_linkedin_url = founder_info.get('LinkedIn URL', 'N/A')
+
         # 格式化超連結
         log_link = f'=HYPERLINK("{doc_url}", "Log")' if doc_url else "N/A"
         deck_link = f'=HYPERLINK("{deck_link_raw}", "Deck")' if deck_link_raw else "N/A"
+        linkedin_link = f'=HYPERLINK("{founder_linkedin_url}", "LinkedIn")' if founder_linkedin_url and founder_linkedin_url != "N/A" else "N/A"
         
         # Prepare row data
         row_data = [
@@ -118,7 +123,8 @@ class GoogleSheetsManager:
             None,
             category,
             datetime.now().strftime('%m/%d/%Y'),  # 只保留月/日/年
-            None
+            None,
+            linkedin_link  # 新增 Founder LinkedIn
         ]
 
         # Check and update headers if needed
@@ -139,17 +145,18 @@ class GoogleSheetsManager:
             'Source Tag',
             'Location',
             'Category',
-            'Created Time'
-            'Updated Date'
+            'Created Time',
+            'Updated Date',
+            'Founder LinkedIn'  # 新增欄位
         ]
         
         # Get the first row to check headers
-        header_range = f"'{sheet_name}'!A1:Q1"  # 使用單引號包裹工作表名稱
+        header_range = f"'{sheet_name}'!A1:S1"  # 使用單引號包裹工作表名稱（19個欄位）
         header_result = service.spreadsheets().values().get(
             spreadsheetId=self.SPREADSHEET_ID,
             range=header_range
         ).execute()
-        
+
         # Add headers if they don't exist or are incomplete
         if 'values' not in header_result or len(header_result['values'][0]) < len(headers):
             service.spreadsheets().values().update(
@@ -158,9 +165,9 @@ class GoogleSheetsManager:
                 valueInputOption='RAW',
                 body={'values': [headers]}
             ).execute()
-        
+
         # Append row to sheet
-        range_name = f"'{sheet_name}'!A:Q"  # 使用單引號包裹工作表名稱
+        range_name = f"'{sheet_name}'!A:S"  # 使用單引號包裹工作表名稱（19個欄位）
         value_input_option = 'USER_ENTERED'
         insert_data_option = 'INSERT_ROWS'
         
