@@ -34,7 +34,7 @@ class LinkedInSearcher:
         self,
         founder_name: str,
         company_name: str,
-        max_results: int = 3
+        max_results: int = 10
     ) -> Optional[Dict]:
         """
         Search for a founder's LinkedIn profile using their name and company
@@ -42,7 +42,7 @@ class LinkedInSearcher:
         Args:
             founder_name: Name of the founder to search for
             company_name: Company name to help identify the correct person
-            max_results: Maximum number of search results to retrieve (default: 3)
+            max_results: Maximum number of search results to retrieve (default: 5)
 
         Returns:
             Dict containing the LinkedIn profile data, or None if not found/failed
@@ -64,8 +64,8 @@ class LinkedInSearcher:
             run_input = {
                 "firstName": first_name,
                 "lastName": last_name,
-                "currentCompanies": [company_name],
                 "maxItems": max_results,
+                "profileScraperMode": "Full",
             }
 
             # Execute the Actor
@@ -83,7 +83,7 @@ class LinkedInSearcher:
             results = list(self.client.dataset(dataset_id).iterate_items())
 
             if not results:
-                logger.warning(f"No LinkedIn profiles found for: {search_query}")
+                logger.warning(f"No LinkedIn profiles found for: {first_name} {last_name}")
                 return None
 
             logger.info(f"Found {len(results)} LinkedIn profile(s)")
@@ -138,8 +138,8 @@ class LinkedInSearcher:
         for profile in results:
             score = 0
 
-            # Check full name match
-            full_name = profile.get('fullName', '').lower()
+            # Check full name match (new actor uses firstName + lastName)
+            full_name = f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip().lower()
             if founder_name_lower in full_name or full_name in founder_name_lower:
                 score += 10
 
@@ -152,11 +152,11 @@ class LinkedInSearcher:
             if any(keyword in headline for keyword in founder_keywords):
                 score += 3
 
-            # Check experiences for company match
-            experiences = profile.get('positions', {}).get('positionsHistory', [])
+            # Check experiences for company match (new actor uses 'experience' list)
+            experiences = profile.get('experience', [])
             for exp in experiences:
                 exp_company = exp.get('companyName', '').lower()
-                exp_title = exp.get('title', '').lower()
+                exp_title = exp.get('position', '').lower()
 
                 if company_name_lower in exp_company:
                     score += 5
@@ -171,8 +171,9 @@ class LinkedInSearcher:
 
         # Log scoring results
         for i, (score, profile) in enumerate(scored_results[:3]):
-            logger.debug(
-                f"Profile {i+1}: {profile.get('fullName')} - "
+            full_name = f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip()
+            logger.info(
+                f"Profile {i+1}: {full_name} - "
                 f"Score: {score} - "
                 f"Headline: {profile.get('headline', 'N/A')}"
             )
@@ -198,21 +199,21 @@ class LinkedInSearcher:
         if not profile:
             return {}
 
-        # Extract positions/experience
-        positions_data = profile.get('positions', {}).get('positionsHistory', [])
+        # Extract positions/experience (new actor uses 'experience' list directly)
+        positions_data = profile.get('experience', [])
         formatted_experience = []
 
         for pos in positions_data:
             exp_entry = {
                 'company': pos.get('companyName', ''),
-                'role': pos.get('title', ''),
-                'duration': self._format_duration(pos),
+                'role': pos.get('position', ''),
+                'duration': pos.get('duration', ''),
                 'description': pos.get('description', '')
             }
             formatted_experience.append(exp_entry)
 
-        # Extract education
-        education_data = profile.get('schools', {}).get('educationsHistory', [])
+        # Extract education (new actor uses 'education' list directly)
+        education_data = profile.get('education', [])
         formatted_education = []
 
         for edu in education_data:
@@ -220,94 +221,44 @@ class LinkedInSearcher:
                 'school': edu.get('schoolName', ''),
                 'degree': edu.get('degree', ''),
                 'field': edu.get('fieldOfStudy', ''),
-                'duration': self._format_education_duration(edu)
+                'duration': edu.get('period', '')
             }
             formatted_education.append(edu_entry)
 
-        # Extract skills
+        # Extract skills (new actor uses 'skills' list with 'name' field)
         skills_data = profile.get('skills', [])
-        skills_list = [skill.get('name', '') for skill in skills_data if skill.get('name')]
+        skills_list = []
+        for skill in skills_data:
+            if isinstance(skill, dict):
+                name = skill.get('name', '')
+            elif isinstance(skill, str):
+                name = skill
+            else:
+                continue
+            if name:
+                skills_list.append(name)
+
+        # Build full name from firstName + lastName
+        full_name = f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip()
+
+        # Extract location text
+        location = profile.get('location', {})
+        if isinstance(location, dict):
+            location_text = location.get('linkedinText', '') or location.get('parsed', {}).get('text', '')
+        else:
+            location_text = str(location) if location else ''
 
         return {
-            'name': profile.get('fullName', ''),
+            'name': full_name,
             'title': profile.get('headline', ''),
-            'location': profile.get('geoLocationName', ''),
-            'linkedin_url': profile.get('url', ''),
+            'location': location_text,
+            'linkedin_url': profile.get('linkedinUrl', ''),
             'public_identifier': profile.get('publicIdentifier', ''),
-            'followers': profile.get('followersCount'),
+            'followers': profile.get('followerCount'),
             'connections': profile.get('connectionsCount'),
-            'about': profile.get('summary', ''),
+            'about': profile.get('about', ''),
             'experience': formatted_experience,
             'education': formatted_education,
             'skills': skills_list[:10],  # Top 10 skills
-            'profile_picture': profile.get('photoUrl', '')
+            'profile_picture': profile.get('photo', '')
         }
-
-    def _format_duration(self, position: Dict) -> str:
-        """
-        Format position duration from start/end dates
-
-        Args:
-            position: Position data dict
-
-        Returns:
-            Formatted duration string (e.g., "Jan 2020 - Present")
-        """
-        start = position.get('start', {})
-        end = position.get('end', {})
-
-        start_str = self._format_date(start)
-        end_str = self._format_date(end) if end else "Present"
-
-        if start_str:
-            return f"{start_str} - {end_str}"
-        return ""
-
-    def _format_education_duration(self, education: Dict) -> str:
-        """
-        Format education duration from start/end dates
-
-        Args:
-            education: Education data dict
-
-        Returns:
-            Formatted duration string
-        """
-        start = education.get('start', {})
-        end = education.get('end', {})
-
-        start_year = start.get('year', '')
-        end_year = end.get('year', '')
-
-        if start_year and end_year:
-            return f"{start_year} - {end_year}"
-        elif start_year:
-            return f"{start_year}"
-        return ""
-
-    def _format_date(self, date_dict: Dict) -> str:
-        """
-        Format date from LinkedIn date dict
-
-        Args:
-            date_dict: Dict with 'month' and 'year' keys
-
-        Returns:
-            Formatted date string (e.g., "Jan 2020")
-        """
-        if not date_dict:
-            return ""
-
-        month = date_dict.get('month')
-        year = date_dict.get('year')
-
-        if not year:
-            return ""
-
-        if month:
-            months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-            month_str = months[month - 1] if 1 <= month <= 12 else ''
-            return f"{month_str} {year}"
-
-        return str(year)
