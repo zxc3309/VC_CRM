@@ -89,22 +89,6 @@ class DealAnalyzer:
             return False
         return True
     
-    def _prepare_completion_params(self, model: str, messages: list, **kwargs) -> dict:
-        """根據模型類型準備 API 呼叫參數"""
-        params = {
-            "model": model,
-            "messages": messages
-        }
-        
-        # 只有支援 temperature 的模型才添加此參數
-        if self._supports_temperature(model):
-            params["temperature"] = kwargs.get("temperature", 0.7)
-        
-        # 添加其他支援的參數
-        if "response_format" in kwargs:
-            params["response_format"] = kwargs["response_format"]
-            
-        return params
 
 
     def extract_deck_link(self, message: str) -> Optional[str]:
@@ -334,18 +318,18 @@ class DealAnalyzer:
                     industry_info=industry_info
                 )
                 
-                params = self._prepare_completion_params(
-                    model=self.ai_model,
-                    messages=[
-                        {"role": "system", "content": "你是一個專門提取創始人信息的 AI 分析師。"},
-                        {"role": "user", "content": prompt}
-                    ],
-                    response_format={"type": "json_object"}
-                )
-                
-                completion = await self.openai_client.chat.completions.create(**params)
-                
-                result = json.loads(completion.choices[0].message.content)
+                params = {
+                    "model": self.ai_model,
+                    "instructions": "你是一個專門提取創始人信息的 AI 分析師。",
+                    "input": [{"role": "user", "content": prompt}],
+                    "text": {"format": {"type": "json_object"}},
+                    "store": True
+                }
+                if self._supports_temperature(self.ai_model):
+                    params["temperature"] = 0.7
+
+                resp = await self.openai_client.responses.create(**params)
+                result = json.loads(resp.output_text)
                 self.input_data["AI Prompt2"] = prompt
                 self.input_data["AI Content2"] = json.dumps(result, ensure_ascii=False)
                 founders = result.get('founders', [])
@@ -614,7 +598,7 @@ class DealAnalyzer:
                     citations = response.citations
                     
             else:
-                # GPT-4/3.5 使用 chat.completions.create API
+                # 其他模型使用 responses API（含 web_search tool）
                 self.logger.info("使用 Format1")
                 
                 # 根據模型類型決定是否包含 temperature 參數
@@ -671,22 +655,24 @@ class DealAnalyzer:
             }
 
     async def _get_completion(self, prompt: str, result_type: str = "general") -> Dict[str, Any]:
-        """使用 OpenAI API 獲取完成結果"""
+        """使用 OpenAI Responses API 獲取完成結果"""
         try:
-            params = self._prepare_completion_params(
-                model=self.ai_model,
-                messages=[
-                    {"role": "system", "content": "你是一個專門分析公司信息的 AI 分析師。"},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"}
-            )
-            
-            completion = await self.openai_client.chat.completions.create(**params)
-            
+            params = {
+                "model": self.ai_model,
+                "instructions": "你是一個專門分析公司信息的 AI 分析師。",
+                "input": [{"role": "user", "content": prompt}],
+                "text": {"format": {"type": "json_object"}},
+                "store": True
+            }
+            if self._supports_temperature(self.ai_model):
+                params["temperature"] = 0.7
+
+            result = await self.openai_client.responses.create(**params)
+            raw_content = result.output_text
+
             # 解析 JSON 響應
-            response = json.loads(completion.choices[0].message.content)
-            
+            response = json.loads(raw_content)
+
             # 更新 input_data
             if result_type == "category":
                 # 限制 Category Prompt 和 Content 長度，避免寫入 Sheets 時出錯
@@ -700,8 +686,8 @@ class DealAnalyzer:
             else:
                 # 其他情況，找第一個空的 AI Prompt 位置
                 pass
-            
-            self.logger.info(f"Raw completion response: {completion.choices[0].message.content}")
+
+            self.logger.info(f"Raw completion response: {raw_content}")
             return response
             
         except Exception as e:

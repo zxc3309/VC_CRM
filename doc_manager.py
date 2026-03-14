@@ -167,16 +167,15 @@ class DocManager:
             ai_model = getattr(self, 'ai_model', None) or input_data.get('ai_model') or "gpt-4.1"
             logger.info(f"[suggest_questions] 🤖 使用 AI 模型: {ai_model}")
 
-            # 根據模型類型準備參數
+            # 使用 Responses API
             params = {
                 "model": ai_model,
-                "messages": [
-                    {"role": "system", "content": "You are a professional VC analyst."},
-                    {"role": "user", "content": prompt}
-                ],
-                "response_format": {"type": "json_object"}
+                "instructions": "You are a professional VC analyst.",
+                "input": [{"role": "user", "content": prompt}],
+                "text": {"format": {"type": "json_object"}},
+                "store": True
             }
-            
+
             # 檢查模型是否支援 temperature 參數
             model_lower = ai_model.lower()
             if not (model_lower.startswith("gpt-5") or model_lower.startswith("o1") or model_lower.startswith("o3")):
@@ -185,10 +184,10 @@ class DocManager:
             else:
                 logger.info("[suggest_questions] ℹ️ 模型不支援 temperature 參數，已跳過")
 
-            logger.info("[suggest_questions] 📡 調用 OpenAI API...")
-            response = await self.openai_client.chat.completions.create(**params)
+            logger.info("[suggest_questions] 📡 調用 OpenAI Responses API...")
+            response = await self.openai_client.responses.create(**params)
 
-            result = response.choices[0].message.content
+            result = response.output_text
             logger.info(f"[suggest_questions] AI 原始回應長度: {len(result)} 字符")
             logger.debug(f"[suggest_questions] AI 原始回應內容: {result[:500]}...")  # 顯示前500字符
             

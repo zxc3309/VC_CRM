@@ -64,7 +64,7 @@
 ## 系統要求
 
 - Python 3.8 或更高版本
-- OpenAI API 密鑰（支持 GPT-4）
+- OpenAI API 密鑰（支持 GPT-4 / GPT-5 系列，使用 Responses API）
 - Google Cloud Service Account（開啟 Docs + Sheets API）
 - Telegram Bot Token
 
