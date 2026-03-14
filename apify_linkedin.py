@@ -52,23 +52,25 @@ class LinkedInSearcher:
             return None
 
         try:
-            # Construct search query: "Founder Name Company Name"
-            search_query = f"{founder_name} {company_name}"
-            logger.info(f"Searching LinkedIn for: {search_query}")
+            # Split founder name into first and last name
+            name_parts = founder_name.strip().split()
+            first_name = name_parts[0] if name_parts else founder_name
+            last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
+
+            logger.info(f"Searching LinkedIn for: {first_name} {last_name} at {company_name}")
 
             # Run input for the Apify Actor
-            # Using harvestapi/linkedin-profile-search which supports search queries
+            # Using harvestapi/linkedin-profile-search-by-name for precise name-based search
             run_input = {
-                "search": search_query,
-                "maxResults": max_results,
-                "proxyOptions": {
-                    "useApifyProxy": True
-                }
+                "firstName": first_name,
+                "lastName": last_name,
+                "currentCompanies": [company_name],
+                "maxItems": max_results,
             }
 
             # Execute the Actor
-            logger.info("Running Apify LinkedIn Profile Search Actor...")
-            run = self.client.actor("harvestapi/linkedin-profile-search").call(
+            logger.info("Running Apify LinkedIn Profile Search By Name Actor...")
+            run = self.client.actor("harvestapi/linkedin-profile-search-by-name").call(
                 run_input=run_input
             )
 
