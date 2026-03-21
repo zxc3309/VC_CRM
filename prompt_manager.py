@@ -186,19 +186,17 @@ class GoogleSheetPromptManager:
                     cleaned_kwargs[key] = ""
                 else:
                     cleaned_kwargs[key] = str(value).replace('\r\n', ' ').replace('\n', ' ').strip()
-            
-            # 清理提示詞模板中的參數名稱
-            pattern = r'{\s*"?(\w+)"?\s*}'
-            cleaned_raw = re.sub(pattern, r'{\1}', raw)
-            
-            # 使用 str.format 進行格式化
-            formatted_prompt = cleaned_raw.format(**cleaned_kwargs)
+
+            # 逐一替換已知參數名稱，避免 JSON 大括號被 str.format() 誤解析
+            result = raw
+            for key, value in cleaned_kwargs.items():
+                # 匹配 {key}、{ key }、{"key"}、{  "key"  } 等變體
+                key_pattern = r'\{\s*"?' + re.escape(key) + r'"?\s*\}'
+                result = re.sub(key_pattern, value, result)
+
             logger.info(f"✅ 成功格式化提示詞: {prompt_id}")
-            return formatted_prompt
-            
-        except KeyError as e:
-            logger.error(f"❌ 格式化失敗: 缺少參數 {e}")
-            raise ValueError(f"Missing parameter for prompt '{prompt_id}': {e}")
+            return result
+
         except Exception as e:
             logger.error(f"❌ 格式化失敗: {e}")
             raise
