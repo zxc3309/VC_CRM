@@ -2,9 +2,9 @@ import os
 import json
 import logging
 from typing import Dict, Any, Optional
-from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from prompt_manager import GoogleSheetPromptManager
+from ai_provider import create_ai_provider
 import traceback
 import re
 import asyncio
@@ -20,9 +20,6 @@ class DealAnalyzer:
     def __init__(self, prompt_manager: GoogleSheetPromptManager = None):
         # Load environment variables from .env file
         load_dotenv(override=True)
-        
-        # 設置 API key
-        api_key = os.getenv("OPENAI_API_KEY")
         
         # 初始化日誌
         self.logger = logging.getLogger(__name__)
@@ -53,18 +50,9 @@ class DealAnalyzer:
             "search_model": ""  # 預設值
         }
         
-        # 初始化 OpenAI 客戶端
-        if api_key:
-            # 只記錄 API key 是否存在，不記錄實際內容
-            self.logger.info("API key is set")
-            
-            # 確保 API key 只包含 ASCII 字元
-            api_key = api_key.encode('ascii', errors='ignore').decode('ascii')
-            
-            self.openai_client = AsyncOpenAI(api_key=api_key)
-        else:
-            self.logger.error("OPENAI_API_KEY environment variable is not set.")
-            raise ValueError("API key is not set. Please set the OPENAI_API_KEY environment variable.")
+        # 初始化 AI Provider
+        self.ai_provider = create_ai_provider()
+        self.logger.info("AI provider initialized")
         
         # 使用傳入的 prompt_manager 或建立新的
         self.prompt_manager = prompt_manager or GoogleSheetPromptManager()
@@ -81,15 +69,6 @@ class DealAnalyzer:
             self.logger.warning(f"Failed to initialize LinkedIn searcher: {e}")
             self.linkedin_searcher = None
         
-    def _supports_temperature(self, model: str) -> bool:
-        """檢查模型是否支援 temperature 參數"""
-        model_lower = model.lower()
-        # GPT-5 系列模型不支援 temperature
-        if model_lower.startswith("gpt-5") or model_lower.startswith("o1") or model_lower.startswith("o3"):
-            return False
-        return True
-    
-
 
     def extract_deck_link(self, message: str) -> Optional[str]:
         """從消息中提取文檔連結"""
@@ -318,18 +297,14 @@ class DealAnalyzer:
                     industry_info=industry_info
                 )
                 
-                params = {
-                    "model": self.ai_model,
-                    "instructions": "你是一個專門提取創始人信息的 AI 分析師。",
-                    "input": [{"role": "user", "content": prompt}],
-                    "text": {"format": {"type": "json_object"}},
-                    "store": True
-                }
-                if self._supports_temperature(self.ai_model):
-                    params["temperature"] = 0.7
-
-                resp = await self.openai_client.responses.create(**params)
-                result = json.loads(resp.output_text)
+                resp = await self.ai_provider.complete(
+                    prompt=prompt,
+                    model=self.ai_model,
+                    system_instruction="你是一個專門提取創始人信息的 AI 分析師。",
+                    json_mode=True,
+                    temperature=0.7,
+                )
+                result = json.loads(resp.text)
                 self.input_data["AI Prompt2"] = prompt
                 self.input_data["AI Content2"] = json.dumps(result, ensure_ascii=False)
                 founders = result.get('founders', [])
@@ -555,10 +530,10 @@ class DealAnalyzer:
     async def _web_search(self, query: str) -> Dict[str, Any]:
         """
         執行網絡搜索並返回結果，包括引用
-        
+
         參數:
         query: 搜索查詢
-        
+
         返回:
         包含搜索結果和引用的字典
         """
@@ -568,79 +543,27 @@ class DealAnalyzer:
             self.logger.info("==================================================")
             self.logger.info(f"搜索查詢: {query}")
             self.logger.info(f"使用模型: {self.search_model}")
-            
-            # 根據模型類型選擇不同的 API 調用方式
-            model_lower = self.search_model.lower()
-            text_content = ""
-            citations = []
-            
-            if model_lower.startswith("o3"):
-                # O3 / o3-mini / o3-pro 模型使用 Format2
-                self.logger.info("使用 Format2")
-                response = await self.openai_client.responses.create(
-                    model=self.search_model,
-                    input=[{"role": "user", "content": query}],
-                    reasoning={
-                        "effort": "medium",
-                        "summary": "auto"
-                    },
-                    store=True
-                )
-                
-                # 獲取搜索結果
-                if hasattr(response, 'output_text'):
-                    text_content = response.output_text
-                elif hasattr(response, 'output') and isinstance(response.output, list) and response.output:
-                    text_content = str(response.output[0])
-                
-                # 檢查是否有引用
-                if hasattr(response, 'citations'):
-                    citations = response.citations
-                    
-            else:
-                # 其他模型使用 responses API（含 web_search tool）
-                self.logger.info("使用 Format1")
-                
-                # 根據模型類型決定是否包含 temperature 參數
-                params = {
-                    "model": self.search_model,
-                    "input": [{"role": "user", "content": query}],
-                    "tools": [{
-                        "type": "web_search",
-                        "search_context_size": "medium"
-                    }],
-                    "top_p": 1,
-                    "store": True
-                }
-                
-                # 只有支援 temperature 的模型才添加此參數
-                if self._supports_temperature(self.search_model):
-                    params["temperature"] = 0
-                
-                response = await self.openai_client.responses.create(**params)
-                
-                # 獲取搜索結果
-                if hasattr(response, 'output_text'):
-                    text_content = response.output_text
-                elif hasattr(response, 'output') and isinstance(response.output, list) and response.output:
-                    text_content = str(response.output[0])
-                
-                # 檢查是否有引用
-                if hasattr(response, 'citations'):
-                    citations = response.citations
-            
+
+            result = await self.ai_provider.web_search(
+                query=query,
+                model=self.search_model,
+            )
+
+            text_content = result.text
+            citations = result.citations or []
+
             self.logger.info("\n回應內容:")
             self.logger.info(text_content)
-            
+
             self.logger.info("\n==================================================")
             self.logger.info(f"搜索完成，找到 {len(citations)} 個引用")
             self.logger.info("==================================================\n")
-            
+
             return {
                 'content': text_content,
                 'citations': citations
-            }  
-                
+            }
+
         except Exception as e:
             self.logger.error("\n==================================================")
             self.logger.error("搜索出錯")
@@ -648,27 +571,23 @@ class DealAnalyzer:
             self.logger.error(f"錯誤類型: {type(e)}")
             self.logger.error(f"錯誤詳情: {str(e)}")
             self.logger.error("完整錯誤信息:", exc_info=True)
-            
+
             return {
                 'content': f"搜索失敗: {str(e)}",
                 'citations': []
             }
 
     async def _get_completion(self, prompt: str, result_type: str = "general") -> Dict[str, Any]:
-        """使用 OpenAI Responses API 獲取完成結果"""
+        """使用 AI Provider 獲取完成結果"""
         try:
-            params = {
-                "model": self.ai_model,
-                "instructions": "你是一個專門分析公司信息的 AI 分析師。",
-                "input": [{"role": "user", "content": prompt}],
-                "text": {"format": {"type": "json_object"}},
-                "store": True
-            }
-            if self._supports_temperature(self.ai_model):
-                params["temperature"] = 0.7
-
-            result = await self.openai_client.responses.create(**params)
-            raw_content = result.output_text
+            result = await self.ai_provider.complete(
+                prompt=prompt,
+                model=self.ai_model,
+                system_instruction="你是一個專門分析公司信息的 AI 分析師。",
+                json_mode=True,
+                temperature=0.7,
+            )
+            raw_content = result.text
 
             # 解析 JSON 響應
             response = json.loads(raw_content)
