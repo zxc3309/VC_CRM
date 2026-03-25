@@ -2,7 +2,7 @@
 Multi-AI Provider Abstraction Layer
 
 Supports OpenAI, Google Gemini, and Anthropic Claude.
-Switch providers via the AI_PROVIDER environment variable.
+Switch providers via Google Sheet (ai_provider prompt) or AI_PROVIDER env var as fallback.
 """
 
 import os

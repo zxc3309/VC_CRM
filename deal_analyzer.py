@@ -46,13 +46,13 @@ class DealAnalyzer:
             "AI Content5": "",
             "deck_data": "",
             "message_text": "",
+            "ai_provider": "",  # 預設值
             "ai_model": "",  # 預設值
             "search_model": ""  # 預設值
         }
-        
-        # 初始化 AI Provider
-        self.ai_provider = create_ai_provider()
-        self.logger.info("AI provider initialized")
+
+        # AI Provider（會在 analyze_deal 時根據 Google Sheet 設定即時建立）
+        self.ai_provider = None
         
         # 使用傳入的 prompt_manager 或建立新的
         self.prompt_manager = prompt_manager or GoogleSheetPromptManager()
@@ -129,14 +129,22 @@ class DealAnalyzer:
                 "AI Content5": "",
                 "deck_data": "",
                 "message_text": "",
+                "ai_provider": "",  # 預設值
                 "ai_model": "",  # 預設值
                 "search_model": ""  # 預設值
             }
-            
+
             # 載入新 input_data 字典
 
-            # 清空快取，即時讀取 ai_model 和 search_model
+            # 清空快取，即時讀取 ai_provider, ai_model 和 search_model
             self.prompt_manager.prompts = {}
+
+            # 從 Google Sheet 讀取 AI Provider 設定，建立對應的 provider
+            provider_name = self.prompt_manager.get_prompt('ai_provider') or os.getenv("AI_PROVIDER", "openai")
+            self.ai_provider = create_ai_provider(provider_name)
+            self.input_data["ai_provider"] = provider_name
+            self.logger.info(f"AI provider: {provider_name}")
+
             self.ai_model = self.prompt_manager.get_prompt('ai_model') or "gpt-4.1"
             self.input_data["ai_model"] = self.ai_model
             self.search_model = self.prompt_manager.get_prompt('search_model') or "gpt-4.1"

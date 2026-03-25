@@ -32,9 +32,9 @@ class DocManager:
         self._initialized = False
         self._initialization_error = None
         
-        # AI Provider 可以立即初始化 (不依賴 Google)
-        self.ai_provider = create_ai_provider()
-        
+        # AI Provider（會在 suggest_questions_with_gpt 時根據 input_data 設定即時建立）
+        self.ai_provider = None
+
         # 使用傳入的 prompt_manager 或建立新的
         self.prompt_manager = prompt_manager or GoogleSheetPromptManager()
         
@@ -163,7 +163,11 @@ class DocManager:
             
             logger.info(f"[suggest_questions] ✅ Prompt 格式化完成，長度: {len(prompt)} 字符")
 
-            # 取得 AI model
+            # 取得 AI Provider 和 AI model
+            provider_name = input_data.get('ai_provider') or os.getenv("AI_PROVIDER", "openai")
+            self.ai_provider = create_ai_provider(provider_name)
+            logger.info(f"[suggest_questions] 🔌 使用 AI Provider: {provider_name}")
+
             ai_model = getattr(self, 'ai_model', None) or input_data.get('ai_model') or "gpt-4.1"
             logger.info(f"[suggest_questions] 🤖 使用 AI 模型: {ai_model}")
 
