@@ -32,8 +32,8 @@ class DocManager:
         self._initialized = False
         self._initialization_error = None
         
-        # AI Provider 可以立即初始化 (不依賴 Google)
-        self.ai_provider = create_ai_provider()
+        # AI Provider 延遲初始化（等 model name 確定後再建立）
+        self.ai_provider = None
         
         # 使用傳入的 prompt_manager 或建立新的
         self.prompt_manager = prompt_manager or GoogleSheetPromptManager()
@@ -163,9 +163,12 @@ class DocManager:
             
             logger.info(f"[suggest_questions] ✅ Prompt 格式化完成，長度: {len(prompt)} 字符")
 
-            # 取得 AI model
+            # 取得 AI model 並根據 model 建立對應 provider
             ai_model = getattr(self, 'ai_model', None) or input_data.get('ai_model') or "gpt-4.1"
             logger.info(f"[suggest_questions] 🤖 使用 AI 模型: {ai_model}")
+
+            if not self.ai_provider:
+                self.ai_provider = create_ai_provider(model=ai_model)
 
             # 使用 AI Provider
             logger.info("[suggest_questions] 📡 調用 AI Provider...")
@@ -185,7 +188,15 @@ class DocManager:
             result_json = {}
             
             try:
-                result_json = json.loads(result)
+                # 移除 markdown code block 包裝（如 ```json ... ```）
+                stripped = result.strip()
+                if stripped.startswith("```"):
+                    lines = stripped.split("\n")
+                    lines = lines[1:]
+                    if lines and lines[-1].strip() == "```":
+                        lines = lines[:-1]
+                    stripped = "\n".join(lines).strip()
+                result_json = json.loads(stripped)
                 logger.info(f"[suggest_questions] 成功解析 JSON，包含欄位: {list(result_json.keys())}")
                 
                 questions = result_json.get("questions", [])

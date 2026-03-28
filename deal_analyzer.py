@@ -50,16 +50,13 @@ class DealAnalyzer:
             "search_model": ""  # 預設值
         }
         
-        # 初始化 AI Provider
-        self.ai_provider = create_ai_provider()
-        self.logger.info("AI provider initialized")
-        
         # 使用傳入的 prompt_manager 或建立新的
         self.prompt_manager = prompt_manager or GoogleSheetPromptManager()
 
-        # 初始化 model 變數（會在需要時即時讀取）
+        # 初始化 model 變數與 AI Provider（延遲到 model 確定後再建立）
         self.ai_model = None
         self.search_model = None
+        self.ai_provider = None
 
         # 初始化 LinkedIn Searcher
         try:
@@ -141,6 +138,10 @@ class DealAnalyzer:
             self.input_data["ai_model"] = self.ai_model
             self.search_model = self.prompt_manager.get_prompt('search_model') or "gpt-4.1"
             self.input_data["search_model"] = self.search_model
+
+            # 根據 model name 自動建立對應的 AI Provider
+            self.ai_provider = create_ai_provider(model=self.ai_model)
+            self.logger.info(f"AI provider initialized for model: {self.ai_model}")
             
             # 更新 input_data
             self.input_data["message_text"] = message_text
@@ -588,9 +589,20 @@ class DealAnalyzer:
                 temperature=0.7,
             )
             raw_content = result.text
+            self.logger.info(f"AI raw response length: {len(raw_content)}, preview: {raw_content[:200] if raw_content else '(empty)'}")
+
+            # 移除 markdown code block 包裝（如 ```json ... ```）
+            stripped = raw_content.strip()
+            if stripped.startswith("```"):
+                lines = stripped.split("\n")
+                # 去掉第一行 (```json) 和最後一行 (```)
+                lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                stripped = "\n".join(lines).strip()
 
             # 解析 JSON 響應
-            response = json.loads(raw_content)
+            response = json.loads(stripped)
 
             # 更新 input_data
             if result_type == "category":

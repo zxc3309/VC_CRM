@@ -2,7 +2,7 @@
 Multi-AI Provider Abstraction Layer
 
 Supports OpenAI, Google Gemini, and Anthropic Claude.
-Switch providers via the AI_PROVIDER environment variable.
+Provider is auto-detected from the model name, or falls back to AI_PROVIDER env var.
 """
 
 import os
@@ -45,15 +45,31 @@ class AIProvider(Protocol):
         ...
 
 
-def create_ai_provider(provider_name: str = None) -> AIProvider:
+def detect_provider_from_model(model_name: str) -> Optional[str]:
+    """Auto-detect provider name from model name prefix."""
+    model_lower = model_name.lower().strip()
+    if model_lower.startswith("claude"):
+        return "anthropic"
+    elif model_lower.startswith(("gpt", "o1", "o3", "o4")):
+        return "openai"
+    elif model_lower.startswith("gemini"):
+        return "google"
+    return None
+
+
+def create_ai_provider(provider_name: str = None, model: str = None) -> AIProvider:
     """
     Factory that creates the appropriate AI provider.
 
-    Args:
-        provider_name: Provider name override. If None, reads from AI_PROVIDER env var.
-                       Supported values: 'openai', 'google'/'gemini', 'anthropic'/'claude'
+    If `model` is provided, the provider is auto-detected from the model name.
+    Otherwise falls back to `provider_name`, then AI_PROVIDER env var.
     """
     load_dotenv(override=True)
+    if model:
+        detected = detect_provider_from_model(model)
+        if detected:
+            provider_name = detected
+            logger.info(f"Auto-detected provider '{provider_name}' from model '{model}'")
     provider_name = provider_name or os.getenv("AI_PROVIDER", "openai")
     provider_name = provider_name.lower().strip()
 
